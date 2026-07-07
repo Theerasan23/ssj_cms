@@ -1,6 +1,9 @@
 // SLA + lockdown logic — ported from cms-design/project/data.js.
 // Operates on the case object shape returned by the API.
-const CLOSED = ["05", "06", "07", "08"];
+// statuses whose SLA clock has stopped — 06/07/09 are follow-up statuses (still
+// workable until closed_at is set) but no deadline applies and they never lock
+const CLOSED = ["05", "06", "07", "08", "09"];
+export const FOLLOWUP = ["06", "07", "09"];
 
 // Admin-configurable SLA durations (days); set from /master on load.
 let SLA_DAYS = { assign: 3, invest: 20, board: 60, fine: 60 };
@@ -80,6 +83,8 @@ export function lockReason(c) {
 
 export function caseSla(c) {
   const s = caseSlaSnapshot(c);
+  // follow-up statuses stay open (no deadline) until the case is explicitly closed
+  if (FOLLOWUP.includes(c.status) && !c.closedAt) return { kind: "in-time", label: "ติดตามผล" };
   if (CLOSED.includes(c.status)) return { kind: "in-time", label: "ปิดเคส" };
   if (c.status === "01") return s.stageAssign;
   if (c.status === "02") return s.stageInvest;

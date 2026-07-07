@@ -92,6 +92,7 @@ const STATUS = {
   "06": { label: "ส่งต่อ", cls: "s06" },
   "07": { label: "ดำเนินคดี", cls: "s07" },
   "08": { label: "ยกเลิก", cls: "s08" },
+  "09": { label: "อยู่ระหว่างเสนอนายแพทย์ยุติ", cls: "s03" },
 };
 
 const SAMPLE_CASES = [

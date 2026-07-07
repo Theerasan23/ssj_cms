@@ -131,6 +131,97 @@ export function InvestigationModal({ c, onClose, onAddEvent, onChoose }) {
   );
 }
 
+// ---------- Follow-up (06 ส่งต่อ / 07 ดำเนินคดี / 09 เสนอนายแพทย์) ----------
+const FOLLOWUP_UI = {
+  "06": { title: "บันทึกการส่งต่อหน่วยงาน", dest: "ส่งต่อไปยัง (หน่วยงาน)", ph: "เช่น อย. / สคบ. / เทศบาลนครนนทบุรี", closeLabel: "ปิดเคส (สิ้นสุดการส่งต่อ)" },
+  "07": { title: "บันทึกการแจ้งความ/ดำเนินคดี", dest: "แจ้งความที่ / หน่วยงาน", ph: "เช่น สภ.เมืองนนทบุรี", closeLabel: "ปิดเคส (สิ้นสุดการดำเนินคดี)" },
+  "09": { title: "บันทึกการเสนอนายแพทย์ สสจ.", dest: "เสนอต่อ", ph: "เช่น นายแพทย์ สสจ.นนทบุรี", closeLabel: "ปิดเคส (นายแพทย์เห็นชอบยุติเรื่อง)" },
+};
+
+// Repeatable progress records for a follow-up case — the case stays in its status
+// until the officer explicitly closes it (09 then resolves to 05 ยุติคดี).
+export function FollowupModal({ c, onClose, onAdd, onCloseCase }) {
+  const { cms } = useApp();
+  const ui = FOLLOWUP_UI[c.status] || FOLLOWUP_UI["06"];
+  const [date, setDate] = useState(cms.TODAY);
+  const [destination, setDestination] = useState("");
+  const [detail, setDetail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const items = c.followups || [];
+
+  async function add() {
+    if ((!destination.trim() && !detail.trim()) || saving) return;
+    setSaving(true);
+    try {
+      const ok = await onAdd({ date, destination, detail });
+      if (ok !== false) { setDestination(""); setDetail(""); }
+    } finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open onClose={onClose} size="lg" title={ui.title} sub={c.etracking + " · " + c.title}
+      footer={<button className="btn btn-outline" onClick={onClose}>ปิด</button>}>
+      <div className="stack">
+        <div style={{ padding: 12, background: "var(--primary-50)", borderRadius: 8, fontSize: 12.5 }}>
+          สถานะเคสคงเป็น <strong>"{cms.STATUS[c.status]?.label || c.status}"</strong> — บันทึกความคืบหน้าได้เรื่อยๆ จนกว่าจะกด "ปิดเคส"
+        </div>
+
+        {items.length > 0 && (
+          <div className="stack-sm">
+            <div className="small" style={{ fontWeight: 600 }}>บันทึกที่ผ่านมา ({items.length} รายการ)</div>
+            {items.slice().reverse().map((f) => (
+              <div key={f.id} className="row" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, alignItems: "flex-start" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--primary-100)", color: "var(--primary-700)" }}>
+                  <Icon name="send" size={15} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{f.destination || "—"} · {cms.fmtThaiDate(f.date)}</div>
+                  {f.detail && <div className="small" style={{ marginTop: 2 }}>{f.detail}</div>}
+                  <div className="small muted" style={{ marginTop: 3, fontSize: 11 }}>โดย {f.user || "—"} · บันทึกเมื่อ {fmtTimestamp(cms, f.createdAt)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="form-section">
+          <div className="section-head"><div className="section-num">+</div><div className="section-title">เพิ่มบันทึกความคืบหน้า</div></div>
+          <div className="section-body stack">
+            <div className="form-grid cols-2">
+              <FormField label="วันที่">
+                <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+              </FormField>
+              <FormField label={ui.dest}>
+                <input className="input" placeholder={ui.ph} value={destination} onChange={(e) => setDestination(e.target.value)} />
+              </FormField>
+            </div>
+            <FormField label="รายละเอียด / เนื้อหา">
+              <textarea className="textarea" rows={3} placeholder="สรุปสิ่งที่ดำเนินการ เอกสารที่ส่ง ผลตอบกลับ ฯลฯ" value={detail} onChange={(e) => setDetail(e.target.value)} />
+            </FormField>
+            <div className="row end">
+              <button className="btn btn-primary" disabled={(!destination.trim() && !detail.trim()) || saving} onClick={add}>
+                <Icon name="plus" size={14} /> เพิ่มบันทึก
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ background: "var(--accent-100)", borderColor: "var(--accent-600)" }}>
+          <div className="card-body" style={{ padding: 16 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "var(--accent-700)", marginBottom: 4 }}>สิ้นสุดการติดตาม</div>
+            <div className="small" style={{ marginBottom: 12, color: "var(--accent-700)" }}>
+              กดเมื่อไม่ต้องบันทึกความคืบหน้าเพิ่มแล้ว{c.status === "09" ? " — เคสจะเปลี่ยนเป็น \"ยุติคดี\"" : " — สถานะคงเดิมและเคสจะถูกปิด"}
+            </div>
+            <button className="btn btn-accent btn-lg" onClick={onCloseCase}>
+              <Icon name="check-circle" size={16} /> {ui.closeLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ---------- Board ----------
 const FINE_RESOLUTIONS = ["เปรียบเทียบปรับ", "ออกคำสั่งปรับพินัย"];
 

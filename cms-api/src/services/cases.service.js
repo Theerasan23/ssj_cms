@@ -92,6 +92,10 @@ function buildShape(r, rel) {
     status: r.status_code,
     lockOverridden: !!r.lock_overridden,
     cancelReason: r.cancel_reason || "",
+    closedAt: r.closed_at,
+    // 05/08 are terminal; 06/07/09 count as closed only after the explicit close action
+    closed: ["05", "08"].includes(r.status_code) || r.closed_at != null,
+    followups: rel.followups,
     attachments: rel.attachments,
     investigations: rel.investigations,
     // derived summary (earliest of each kind) — keeps SLA + step "done" logic working
@@ -129,6 +133,9 @@ async function attachRelations(rows) {
     `SELECT case_id, date, time, title, user_name AS user, kind, status FROM case_timeline WHERE case_id IN (${ph}) ORDER BY seq`, ids);
   const [investigations] = await pool.query(
     `SELECT case_id, id, kind, date, place, result FROM case_investigations WHERE case_id IN (${ph}) ORDER BY seq, id`, ids);
+  const [followups] = await pool.query(
+    `SELECT case_id, id, date, destination, detail, user_name AS user, created_at AS createdAt
+     FROM case_followups WHERE case_id IN (${ph}) ORDER BY seq, id`, ids);
   const [meetings] = await pool.query(
     `SELECT case_id, id, meeting_no AS meetingNo, year, meeting_date AS meetingDate, resolution, notes, created_at AS createdAt
      FROM case_board_meetings WHERE case_id IN (${ph}) ORDER BY seq, id`, ids);
@@ -153,11 +160,13 @@ async function attachRelations(rows) {
   const gFines = groupBy(fines, "case_id");
   const gTimeline = groupBy(timeline, "case_id");
   const gInv = groupBy(investigations, "case_id");
+  const gFollowups = groupBy(followups, "case_id");
   const gMeetings = groupBy(meetings, "case_id");
 
   return rows.map((r) =>
     buildShape(r, {
       investigations: (gInv.get(r.id) || []).map((x) => ({ id: x.id, kind: x.kind, date: x.date, place: x.place || "", result: x.result || "" })),
+      followups: (gFollowups.get(r.id) || []).map((x) => ({ id: x.id, date: x.date, destination: x.destination || "", detail: x.detail || "", user: x.user || "", createdAt: x.createdAt })),
       boardMeetings: (gMeetings.get(r.id) || []).map((m) => ({
         id: m.id, meetingNo: m.meetingNo, year: m.year, meetingDate: m.meetingDate,
         resolution: m.resolution || "", notes: m.notes || "", createdAt: m.createdAt,
@@ -453,11 +462,13 @@ async function saveInvestigation(id, p, byName) {
 
 async function decision(id, path, byName) {
   await assertActionable(id, ["02"]);
+  // forward/police/stop no longer close the case — they enter a follow-up status
+  // where the officer keeps recording progress until the explicit close action
   const map = {
     board: { status: "03", line: "เลือกแนวทาง: เข้ากรรมการ" },
-    forward: { status: "06", line: "ส่งต่อหน่วยงานอื่น (ปิดเคส)" },
-    stop: { status: "05", line: "เสนอนายแพทย์ยุติเรื่อง (ปิดเคส)" },
-    police: { status: "07", line: "ดำเนินคดี/แจ้งความ (ปิดเคส)" },
+    forward: { status: "06", line: "เลือกแนวทาง: ส่งต่อหน่วยงานอื่น — ติดตามผลจนกว่าจะปิดเคส" },
+    stop: { status: "09", line: "เลือกแนวทาง: เสนอนายแพทย์ยุติเรื่อง — อยู่ระหว่างเสนอ" },
+    police: { status: "07", line: "เลือกแนวทาง: แจ้งความ/ดำเนินคดี — ติดตามผลจนกว่าจะปิดเคส" },
   };
   const d = map[path];
   if (!d) { const e = new Error("แนวทางไม่ถูกต้อง"); e.status = 400; throw e; }
@@ -473,6 +484,57 @@ async function decision(id, path, byName) {
   } finally {
     conn.release();
   }
+  return getCaseById(id);
+}
+
+// ---------- follow-up statuses (06 ส่งต่อ / 07 ดำเนินคดี / 09 เสนอนายแพทย์) ----------
+const FOLLOWUP_LABEL = { "06": "การส่งต่อหน่วยงาน", "07": "การแจ้งความ/ดำเนินคดี", "09": "การเสนอนายแพทย์" };
+
+// Records one follow-up entry (ส่งไปไหน + เนื้อหา) — repeatable until the case is closed.
+async function addFollowup(id, payload, user) {
+  const c = await fetchOr404(id);
+  if (!FOLLOWUP_LABEL[c.status]) { const e = new Error("บันทึกติดตามผลได้เฉพาะเคสสถานะ ส่งต่อ/ดำเนินคดี/เสนอนายแพทย์"); e.status = 409; throw e; }
+  if (c.closed) { const e = new Error("เคสนี้ปิดแล้ว — บันทึกเพิ่มไม่ได้"); e.status = 409; throw e; }
+  const destination = (payload.destination || "").trim();
+  const detail = (payload.detail || "").trim();
+  if (!destination && !detail) { const e = new Error("กรุณากรอกหน่วยงาน/สถานที่ หรือรายละเอียด"); e.status = 400; throw e; }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query("SELECT COALESCE(MAX(seq), -1) + 1 AS n FROM case_followups WHERE case_id = ?", [id]);
+    await conn.query(
+      "INSERT INTO case_followups (case_id, date, destination, detail, user_name, seq) VALUES (?, ?, ?, ?, ?, ?)",
+      [id, payload.date || sla.TODAY(), destination || null, detail || null, user.name, rows[0].n]
+    );
+    await addTimeline(conn, id, {
+      title: `บันทึก${FOLLOWUP_LABEL[c.status]}${destination ? ` — ${destination}` : ""}`,
+      user: user.name, kind: "decision",
+    });
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  return getCaseById(id);
+}
+
+// Explicitly closes a follow-up case: 06/07 keep their status (closed_at marks the end),
+// 09 resolves to 05 ยุติคดี (นายแพทย์เห็นชอบยุติเรื่อง).
+async function closeFollowupCase(id, user) {
+  const c = await fetchOr404(id);
+  if (!FOLLOWUP_LABEL[c.status]) { const e = new Error("ปิดเคสจากสถานะนี้ไม่ได้"); e.status = 409; throw e; }
+  if (c.closed) { const e = new Error("เคสนี้ปิดแล้ว"); e.status = 409; throw e; }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const today = sla.TODAY();
+    if (c.status === "09") {
+      await conn.query("UPDATE cases SET status_code = '05', closed_at = ? WHERE id = ?", [today, id]);
+      await addTimeline(conn, id, { title: "นายแพทย์ สสจ. เห็นชอบยุติเรื่อง — ปิดเคส (ยุติคดี)", user: user.name, kind: "close" });
+    } else {
+      await conn.query("UPDATE cases SET closed_at = ? WHERE id = ?", [today, id]);
+      await addTimeline(conn, id, { title: `ปิดเคส — สิ้นสุด${FOLLOWUP_LABEL[c.status]}`, user: user.name, kind: "close" });
+    }
+    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "success", title: `เคส ${c.etracking} ปิดแล้ว`, caseId: id });
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
 }
 
@@ -911,5 +973,6 @@ module.exports = {
   getCaseById, getAllCases, listCases, createCase, updateCase,
   assignCase, reassignCase, saveInvestigation, addInvestigationEvent, decision,
   saveBoard, applyBoardResolution, savePayment, closeFineCase,
+  addFollowup, closeFollowupCase,
   cancelCase, unlockCase, returnCase, submitCase, importCases,
 };

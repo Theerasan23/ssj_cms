@@ -9,7 +9,6 @@ import { useApp, useToasts } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
 import { api } from "@/lib/api";
 
-const CLOSED = ["05", "06", "07", "08"];
 
 export default function DashboardPage() {
   const { role } = useApp();
@@ -32,12 +31,12 @@ function HeadDashboard({ cases, reload }) {
   const queueLive = queue.filter((c) => !cms.isCaseLocked(c));
 
   const total = submittedByOfficer.length;
-  const inProgress = submittedByOfficer.filter((c) => !CLOSED.includes(c.status)).length;
+  const inProgress = submittedByOfficer.filter((c) => !c.closed).length;
   const lockedAll = submittedByOfficer.filter((c) => cms.isCaseLocked(c)).length;
-  const overdueAll = submittedByOfficer.filter((c) => !CLOSED.includes(c.status) && cms.caseSla(c).kind === "overdue").length;
+  const overdueAll = submittedByOfficer.filter((c) => !c.closed && cms.caseSla(c).kind === "overdue").length;
   const onTime = submittedByOfficer.filter((c) => {
     const s = cms.caseSla(c);
-    return s.kind === "in-time" || s.kind === "far" || CLOSED.includes(c.status);
+    return s.kind === "in-time" || s.kind === "far" || c.closed;
   }).length;
   const onTimePct = total ? Math.round((onTime / total) * 100) : 0;
 
@@ -48,7 +47,7 @@ function HeadDashboard({ cases, reload }) {
   const maxStatus = Math.max(1, ...statusCounts.map((s) => s.count));
 
   const officerLoad = cms.MASTER.officers.map((o) => {
-    const myCases = cases.filter((c) => c.assignees.includes(o.id) && !CLOSED.includes(c.status));
+    const myCases = cases.filter((c) => c.assignees.includes(o.id) && !c.closed);
     return { ...o, count: myCases.length, locked: myCases.filter((x) => cms.isCaseLocked(x)).length };
   }).sort((a, b) => a.count - b.count);
   const maxLoad = Math.max(1, ...officerLoad.map((o) => o.count));
@@ -234,9 +233,9 @@ function OfficerDashboard({ cases }) {
   const inPeriod = cases.filter((c) => c.createdAt && c.createdAt >= cutoff);
 
   const totalCases = cases.length;
-  const inProgress = cases.filter((c) => !CLOSED.includes(c.status)).length;
-  const nearCases = cases.filter((c) => !CLOSED.includes(c.status) && cms.caseSla(c).kind === "near").length;
-  const overdueCases = cases.filter((c) => !CLOSED.includes(c.status) && cms.caseSla(c).kind === "overdue").length;
+  const inProgress = cases.filter((c) => !c.closed).length;
+  const nearCases = cases.filter((c) => !c.closed && cms.caseSla(c).kind === "near").length;
+  const overdueCases = cases.filter((c) => !c.closed && cms.caseSla(c).kind === "overdue").length;
 
   const statusCounts = Object.keys(cms.STATUS).map((code) => ({ code, count: inPeriod.filter((c) => c.status === code).length, label: cms.STATUS[code].label }));
   const maxStatus = Math.max(1, ...statusCounts.map((s) => s.count));

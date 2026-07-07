@@ -207,6 +207,8 @@ CREATE TABLE cases (
 
   lock_overridden      TINYINT(1) NOT NULL DEFAULT 0,
   cancel_reason        VARCHAR(255),
+  -- statuses 06/07/09 stay active (follow-up) until explicitly closed
+  closed_at            DATE,
   returned             TINYINT(1) NOT NULL DEFAULT 0,
   return_reason        VARCHAR(255),
   is_draft             TINYINT(1) NOT NULL DEFAULT 0,
@@ -344,6 +346,20 @@ CREATE TABLE case_timeline (
   seq       INT NOT NULL DEFAULT 0,
   INDEX idx_tl_case (case_id, seq),
   CONSTRAINT fk_tl_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- repeatable follow-up records for statuses 06 (ส่งต่อ), 07 (ดำเนินคดี), 09 (เสนอนายแพทย์)
+CREATE TABLE case_followups (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  case_id     VARCHAR(32) NOT NULL,
+  date        DATE,
+  destination VARCHAR(255),
+  detail      TEXT,
+  user_name   VARCHAR(128),
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  seq         INT NOT NULL DEFAULT 0,
+  INDEX idx_followup_case (case_id, seq),
+  CONSTRAINT fk_followup_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE case_investigations (

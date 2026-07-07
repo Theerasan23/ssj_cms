@@ -6,7 +6,6 @@ import { Avatar, Donut } from "@/components/ui";
 import { useApp } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
 
-const CLOSED = ["05", "06", "07", "08"];
 const MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const STAGES = ["มอบหมาย", "ตรวจสอบ", "กรรมการ", "ค่าปรับ"];
 
@@ -53,9 +52,9 @@ export default function ReportsPage() {
   if (loading) return <main className="page"><div className="muted">กำลังโหลด…</div></main>;
 
   const totalCases = inPeriod.length;
-  const closedList = inPeriod.filter((c) => CLOSED.includes(c.status));
+  const closedList = inPeriod.filter((c) => c.closed);
   const closedCases = closedList.length;
-  const onTime = inPeriod.filter((c) => { const s = cms.caseSla(c); return s.kind === "in-time" || s.kind === "far" || CLOSED.includes(c.status); }).length;
+  const onTime = inPeriod.filter((c) => { const s = cms.caseSla(c); return s.kind === "in-time" || s.kind === "far" || c.closed; }).length;
   const onTimePct = totalCases ? Math.round((onTime / totalCases) * 100) : 0;
   // Real average processing time: created → close event, over closed cases in the window.
   const durations = closedList.map((c) => {

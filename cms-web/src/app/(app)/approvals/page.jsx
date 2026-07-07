@@ -9,7 +9,6 @@ import { useApp, useToasts } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
 import { api } from "@/lib/api";
 
-const CLOSED = ["05", "06", "07", "08"];
 
 export default function ApprovalsPage() {
   const { role, cms, actions } = useApp();
@@ -129,21 +128,22 @@ export default function ApprovalsPage() {
       <div className="card" style={{ marginTop: 20 }}>
         <div className="card-header" style={{ padding: 0, borderBottom: "1px solid var(--border)" }}>
           <Tabs value={tab} onChange={setTab} tabs={[
-            { value: "pending", label: "รออนุมัติ", icon: "hand", count: pending.length },
+            { value: "pending", label: "รออนุมัติ", icon: "hand", count: pendingLive.length },
             { value: "returned", label: "ตีกลับแล้ว", icon: "arrow-left", count: returnedList.length },
             { value: "approved", label: "อนุมัติแล้ว", icon: "check-circle", count: approved.length },
+            { value: "overdue", label: "เกิน SLA", icon: "lock", count: pendingLocked.length },
           ]} />
         </div>
 
         {tab === "pending" ? (
           <div className="card-body" style={{ display: "grid", gap: 12 }}>
-            {pending.length === 0 ? (
+            {pendingLive.length === 0 ? (
               <div className="table-empty" style={{ padding: "40px 16px" }}>
                 <div className="empty-icon" style={{ background: "var(--success-100)", color: "var(--success-700)" }}><Icon name="check-circle" size={24} /></div>
                 <div style={{ fontWeight: 600 }}>ไม่มีรายการรออนุมัติ</div>
-                <div className="small muted">เคสจะปรากฏที่นี่เมื่อเจ้าหน้าที่ส่งเข้ามา</div>
+                <div className="small muted">เคสจะปรากฏที่นี่เมื่อเจ้าหน้าที่ส่งเข้ามา{pendingLocked.length > 0 && <> · เคสที่เกินกำหนดอยู่ในแท็บ "เกิน SLA"</>}</div>
               </div>
-            ) : pending.map((c) => {
+            ) : pendingLive.map((c) => {
               const locked = cms.isCaseLocked(c);
               const lockInfo = cms.lockReason(c);
               const sla = cms.caseSla(c);
@@ -207,7 +207,7 @@ export default function ApprovalsPage() {
               </tbody>
             </table>
           </div>
-        ) : (
+        ) : tab === "approved" ? (
           <div className="table-wrap">
             <table className="data">
               <thead><tr><th>E-tracking</th><th>ชื่อเคส</th><th>ผู้รับผิดชอบ</th><th>มอบหมายเมื่อ</th><th>สถานะ</th><th>จัดการ</th><th></th></tr></thead>
@@ -240,6 +240,51 @@ export default function ApprovalsPage() {
                 {approved.length === 0 && <tr><td colSpan="7"><div className="table-empty"><div className="empty-icon"><Icon name="check-circle" size={24} /></div>ยังไม่มีเคสที่อนุมัติแล้ว</div></td></tr>}
               </tbody>
             </table>
+          </div>
+        ) : (
+          <div className="card-body" style={{ display: "grid", gap: 12 }}>
+            {pendingLocked.length === 0 ? (
+              <div className="table-empty" style={{ padding: "40px 16px" }}>
+                <div className="empty-icon" style={{ background: "var(--success-100)", color: "var(--success-700)" }}><Icon name="check-circle" size={24} /></div>
+                <div style={{ fontWeight: 600 }}>ไม่มีเคสรออนุมัติที่เกิน SLA</div>
+                <div className="small muted">เคสที่รออนุมัติเกินกำหนดจะย้ายมาอยู่ที่นี่ — ปลดล็อกได้โดยผู้ดูแลระบบ</div>
+              </div>
+            ) : pendingLocked.map((c) => {
+              const lockInfo = cms.lockReason(c);
+              return (
+                <div key={c.id} className="approval-card is-locked">
+                  <div>
+                    <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                      <span className="ap-tracking">{c.etracking}</span>
+                      <StatusBadge code={c.status} size="sm" />
+                      <span className="lock-pill"><Icon name="lock" size={10} /> ล็อก — เกิน SLA</span>
+                      {c.bountyAmount && <span className="chip accent" style={{ fontSize: 10.5 }}>💰 สินบนนำจับ</span>}
+                    </div>
+                    <div className="ap-title">{c.title}</div>
+                    <div className="ap-meta">
+                      <span><Icon name="package" size={12} /> <b>{c.respondent.business || c.respondent.licensee || "—"}</b> · {c.respondent.district}</span>
+                      <span><Icon name="shield" size={12} /> {c.laws.map((l) => cms.lawLabel(l)).join(", ")}</span>
+                      <span><Icon name="phone" size={12} /> {c.complainant.channel}</span>
+                    </div>
+                    <div className="ap-sub-by" style={{ marginTop: 8 }}>
+                      <Icon name="user" size={11} /> เจ้าหน้าที่ส่งเมื่อ <b style={{ color: "var(--text)" }}>{cms.fmtThaiDate(c.createdAt)}</b>
+                      <span style={{ color: "var(--text-muted)" }}>·</span> ลงรับ POST <b style={{ color: "var(--text)" }}>{cms.fmtThaiDate(c.postDate)}</b>
+                    </div>
+                    {lockInfo && (
+                      <div className="small" style={{ marginTop: 8, padding: "6px 10px", borderRadius: 6, background: "var(--error-100)", color: "var(--error-700)", display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        <Icon name="lock" size={12} /> {lockInfo.stage} — {lockInfo.detail}. ห้ามแก้ไข/มอบหมาย
+                      </div>
+                    )}
+                  </div>
+                  <div className="ap-actions">
+                    <div className="row" style={{ gap: 6 }}>
+                      <button className="btn btn-ghost btn-sm" onClick={() => router.push(`/cases/${c.id}`)}><Icon name="eye" size={14} /> ดูรายละเอียด</button>
+                    </div>
+                    <button className="btn btn-outline btn-sm" disabled style={{ opacity: 0.6 }}><Icon name="lock" size={14} /> ล็อก</button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

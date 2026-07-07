@@ -19,6 +19,18 @@ function asArray(v) {
   return Array.isArray(v) ? v : String(v).split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+// Workflow writes are restricted to head/admin or the case creator.
+async function requireCaseActor(req, res, next) {
+  try {
+    const c = await cases.getCaseById(req.params.id);
+    if (!c) return res.status(404).json({ error: "ไม่พบเคส" });
+    if (!["head", "admin"].includes(req.user.roleId) && c.createdByUserId !== req.user.userId) {
+      return res.status(403).json({ error: "เฉพาะหัวหน้า แอดมิน หรือเจ้าหน้าที่ผู้สร้างเคสเท่านั้น" });
+    }
+    next();
+  } catch (e) { next(e); }
+}
+
 // GET /api/cases — list with filters
 router.get("/", async (req, res, next) => {
   try {
@@ -90,42 +102,42 @@ router.post("/:id/reassign", requireRole("head", "admin"), async (req, res, next
 });
 
 // POST /api/cases/:id/investigation  (legacy single save)
-router.post("/:id/investigation", requireRole("officer", "head", "admin"), async (req, res, next) => {
+router.post("/:id/investigation", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     res.json(await cases.saveInvestigation(req.params.id, req.body || {}, req.user.name));
   } catch (e) { next(e); }
 });
 
 // POST /api/cases/:id/investigation/event  { kind: 'site'|'meeting', date, place, result }
-router.post("/:id/investigation/event", requireRole("officer", "head", "admin"), async (req, res, next) => {
+router.post("/:id/investigation/event", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     res.json(await cases.addInvestigationEvent(req.params.id, req.body || {}, req.user.name));
   } catch (e) { next(e); }
 });
 
 // POST /api/cases/:id/decision { path }
-router.post("/:id/decision", requireRole("officer", "head", "admin"), async (req, res, next) => {
+router.post("/:id/decision", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     res.json(await cases.decision(req.params.id, (req.body || {}).path, req.user.name));
   } catch (e) { next(e); }
 });
 
 // POST /api/cases/:id/board
-router.post("/:id/board", requireRole("officer", "head", "admin"), async (req, res, next) => {
+router.post("/:id/board", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     res.json(await cases.saveBoard(req.params.id, req.body || {}, req.user.name));
   } catch (e) { next(e); }
 });
 
 // POST /api/cases/:id/board/apply — apply the latest resolution (move case forward)
-router.post("/:id/board/apply", requireRole("officer", "head", "admin"), async (req, res, next) => {
+router.post("/:id/board/apply", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     res.json(await cases.applyBoardResolution(req.params.id, req.user.name));
   } catch (e) { next(e); }
 });
 
 // POST /api/cases/:id/payment { fineId, paidDate, amount } — amount may be partial
-router.post("/:id/payment", requireRole("officer", "head", "admin"), async (req, res, next) => {
+router.post("/:id/payment", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     const { fineId, paidDate, amount } = req.body || {};
     if (!fineId || !paidDate || amount == null) return res.status(400).json({ error: "ข้อมูลการชำระไม่ครบ" });
@@ -133,10 +145,22 @@ router.post("/:id/payment", requireRole("officer", "head", "admin"), async (req,
   } catch (e) { next(e); }
 });
 
-// POST /api/cases/:id/close — officer closes a fully-paid fine case (04 → 05)
-router.post("/:id/close", requireRole("officer", "head", "admin"), async (req, res, next) => {
+// POST /api/cases/:id/followup { date, destination, detail } — repeatable record for 06/07/09
+router.post("/:id/followup", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
-    res.json(await cases.closeFineCase(req.params.id, req.user.name));
+    res.json(await cases.addFollowup(req.params.id, req.body || {}, req.user));
+  } catch (e) { next(e); }
+});
+
+// POST /api/cases/:id/close — 04 (ค่าปรับครบ) → 05; follow-up statuses 06/07/09 → explicit close
+router.post("/:id/close", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
+  try {
+    const c = await cases.getCaseById(req.params.id);
+    if (c && ["06", "07", "09"].includes(c.status)) {
+      res.json(await cases.closeFollowupCase(req.params.id, req.user));
+    } else {
+      res.json(await cases.closeFineCase(req.params.id, req.user.name));
+    }
   } catch (e) { next(e); }
 });
 
@@ -171,7 +195,7 @@ router.post("/:id/return", requireRole("head", "admin"), async (req, res, next) 
 
 // ---- Attachments ----
 // POST /api/cases/:id/attachments  (multipart "files") — upload real files
-router.post("/:id/attachments", requireRole("officer", "head", "admin"), upload.array("files", 10), async (req, res, next) => {
+router.post("/:id/attachments", requireRole("officer", "head", "admin"), requireCaseActor, upload.array("files", 10), async (req, res, next) => {
   try {
     await cases.getCaseById(req.params.id).then((c) => { if (!c) { const e = new Error("ไม่พบเคส"); e.status = 404; throw e; } });
     await attachments.saveAttachments(req.params.id, req.files, req.user.name);
@@ -191,7 +215,7 @@ router.get("/:id/attachments/:attId", async (req, res, next) => {
 });
 
 // DELETE /api/cases/:id/attachments/:attId
-router.delete("/:id/attachments/:attId", requireRole("officer", "head", "admin"), async (req, res, next) => {
+router.delete("/:id/attachments/:attId", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     await attachments.deleteAttachment(req.params.id, req.params.attId);
     res.json(await cases.getCaseById(req.params.id));

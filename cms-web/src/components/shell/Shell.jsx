@@ -96,12 +96,6 @@ function Sidebar({ items, pathname, mobileNavOpen, setMobileNavOpen }) {
               {it.key === "approvals" && approvalBadge > 0 && <span className="nav-badge">{approvalBadge}</span>}
             </button>
           ))}
-          <div className="nav-section-label">บริการสาธารณะ</div>
-          <button className="nav-item" onClick={() => go("/track")}>
-            <Icon className="nav-icon" name="search" />
-            <span className="nav-label">Public Tracking</span>
-            <Icon name="external" size={14} style={{ opacity: 0.6 }} />
-          </button>
         </nav>
         <div className="sidebar-footer">
           <button className="nav-item" style={{ color: "var(--error-700)" }} onClick={() => actions.logout()}>
@@ -122,7 +116,7 @@ function AppHeader({ setMobileNavOpen }) {
       <button className="icon-btn" id="mobile-toggle" onClick={() => setMobileNavOpen((v) => !v)}>
         <Icon name="menu" />
       </button>
-      <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2 }}>
+      <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.2, minWidth: 0 }}>
         <div className="page-title">{title}</div>
         <div className="page-sub">{sub}</div>
       </div>
@@ -148,7 +142,7 @@ function HeaderControls() {
       <div className="quick-search">
         <Icon name="search" className="search-icon" size={16} />
         <input placeholder="ค้นหา E-tracking, ชื่อเคส, ผู้ถูกร้อง..."
-          onKeyDown={(e) => { if (e.key === "Enter") router.push(`/cases?q=${encodeURIComponent(e.target.value)}`); }} />
+          onKeyDown={(e) => { if (e.key === "Enter") { router.push(`/cases?q=${encodeURIComponent(e.target.value)}`); e.target.blur(); } }} />
         <kbd>⌘ K</kbd>
       </div>
       <div ref={bellRef} style={{ position: "relative" }}>

@@ -20,32 +20,6 @@ router.get("/stats", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// GET /api/public/track?etracking=...  (no auth; hides personal data — PDPA)
-router.get("/track", async (req, res, next) => {
-  try {
-    const et = (req.query.etracking || "").trim();
-    if (!et) return res.status(400).json({ error: "กรุณากรอกเลข E-tracking" });
-    const [rows] = await pool.query("SELECT id FROM cases WHERE etracking = ? LIMIT 1", [et]);
-    if (!rows.length) return res.json({ found: false });
-    const c = await cases.getCaseById(rows[0].id);
-
-    // Strip personal information — keep only status/progress fields
-    const sanitized = {
-      etracking: c.etracking,
-      status: c.status,
-      postDate: c.postDate,
-      laws: c.laws,
-      assignedAt: c.assignedAt,
-      investigation: {
-        siteVisitDate: c.investigation.siteVisitDate,
-        meetingDate: c.investigation.meetingDate,
-      },
-      board: c.board ? { meetingDate: c.board.meetingDate } : null,
-      fines: c.fines.map((f) => ({ paid: f.paid, paidDate: f.paidDate })),
-      timeline: c.timeline.map((t) => ({ date: t.date })),
-    };
-    res.json({ found: true, case: sanitized });
-  } catch (e) { next(e); }
-});
+// (public tracking endpoint removed 2026-07 — the /track page was retired)
 
 module.exports = router;

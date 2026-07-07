@@ -3,12 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { StatusBadge, SLABadge, AvatarStack, Tabs, DataCard, FormField, SLATimelineHorizontal, Modal } from "@/components/ui";
-import { AssignModal, InvestigationModal, BoardModal, FineModal, fmtTimestamp } from "@/components/CaseModals";
+import { StatusBadge, SLABadge, Avatar, Tabs, DataCard, FormField, SLATimelineHorizontal, Modal } from "@/components/ui";
+import { AssignModal, InvestigationModal, BoardModal, FineModal, FollowupModal, fmtTimestamp } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
-
-const CLOSED = ["05", "06", "07", "08"];
 
 export default function CaseDetailPage() {
   const { id } = useParams();
@@ -50,8 +48,9 @@ export default function CaseDetailPage() {
   }
 
   const canAssign = ["head", "admin"].includes(role.id);
-  const canEdit = ["officer", "head", "admin"].includes(role.id);
-  const closedCase = CLOSED.includes(c.status);
+  // workflow saves (ตรวจสอบ/มติ/ชำระ/ติดตาม/ไฟล์แนบ) — head, admin, or the case creator only
+  const canEdit = canAssign || c.createdByUserId === role.userId;
+  const closedCase = c.closed;
   const sla = cms.caseSla(c);
   const locked = cms.isCaseLocked(c);
   const lock = cms.lockReason(c);
@@ -124,6 +123,19 @@ export default function CaseDetailPage() {
     }
   }
   const doCloseFine = () => { if (guardLocked()) return; run(() => api.post(`/cases/${c.id}/close`, {}), "ปิดเคสแล้ว", "ยุติคดี — ชำระค่าปรับครบ"); };
+  // follow-up statuses (06/07/09): repeatable progress records + explicit close
+  async function addFollowupRecord(payload) {
+    try {
+      const updated = await api.post(`/cases/${c.id}/followup`, payload);
+      setC(updated);
+      toast.push({ kind: "success", title: "บันทึกความคืบหน้าแล้ว", msg: "บันทึกเพิ่มได้เรื่อยๆ จนกว่าจะกดปิดเคส" });
+      return true;
+    } catch (e) {
+      toast.push({ kind: "danger", title: "บันทึกไม่สำเร็จ", msg: e.message });
+      return false;
+    }
+  }
+  const doCloseFollowup = () => run(() => api.post(`/cases/${c.id}/close`, {}), "ปิดเคสแล้ว", c.status === "09" ? "นายแพทย์เห็นชอบ — ยุติคดี" : "สิ้นสุดการติดตามผล");
 
   async function uploadFiles(fileList) {
     const files = Array.from(fileList || []);
@@ -196,12 +208,16 @@ export default function CaseDetailPage() {
     if (c.status === "01" && c.isDraft) return { label: "ส่งขออนุมัติหัวหน้า", icon: "send", onClick: doSubmitDraft, disabled: c.createdByUserId !== role.userId };
     if (c.status === "01" && c.returned && c.createdByUserId === role.userId) return { label: "ส่งขออนุมัติอีกครั้ง", icon: "send", onClick: doSubmitDraft };
     if (c.status === "01") return { label: "มอบหมายเจ้าหน้าที่", icon: "users", onClick: () => setModal("assign"), disabled: !canAssign };
-    if (c.status === "02") return { label: "บันทึกการตรวจสอบ", icon: "loupe", onClick: () => setModal("invest") };
-    if (c.status === "03") return { label: "บันทึกมติคณะกรรมการ", icon: "users", onClick: () => setModal("board") };
+    if (c.status === "02") return { label: "บันทึกการตรวจสอบ", icon: "loupe", onClick: () => setModal("invest"), disabled: !canEdit };
+    if (c.status === "03") return { label: "บันทึกมติคณะกรรมการ", icon: "users", onClick: () => setModal("board"), disabled: !canEdit };
     if (c.status === "04") {
-      if (allFinesPaid) return { label: "ปิดเคส (ชำระค่าปรับครบ)", icon: "check-circle", onClick: doCloseFine };
-      return { label: "บันทึกการชำระ", icon: "money", onClick: () => setModal("fine") };
+      if (allFinesPaid) return { label: "ปิดเคส (ชำระค่าปรับครบ)", icon: "check-circle", onClick: doCloseFine, disabled: !canEdit };
+      return { label: "บันทึกการชำระ", icon: "money", onClick: () => setModal("fine"), disabled: !canEdit };
     }
+    // follow-up statuses — keep recording progress until the case is explicitly closed
+    if (c.status === "06") return { label: "บันทึกการส่งต่อหน่วยงาน", icon: "send", onClick: () => setModal("followup"), disabled: !canEdit };
+    if (c.status === "07") return { label: "บันทึกการแจ้งความ/ดำเนินคดี", icon: "gavel", onClick: () => setModal("followup"), disabled: !canEdit };
+    if (c.status === "09") return { label: "บันทึกการเสนอนายแพทย์", icon: "edit", onClick: () => setModal("followup"), disabled: !canEdit };
     return null;
   })();
 
@@ -225,10 +241,9 @@ export default function CaseDetailPage() {
           <div className="k">พรบ.</div><div className="v"><div className="tag-list">{c.laws.map((id2) => <span key={id2} className="chip primary">{cms.lawLabel(id2)}</span>)}</div></div>
           <div className="k">ผู้รับผิดชอบ</div>
           <div className="v">{c.assignees.length === 0 ? <span className="muted">— ยังไม่มอบหมาย</span> : (
-            <div className="row" style={{ gap: 6 }}>
-              <AvatarStack names={c.assignees.map((id2) => cms.officerName(id2))} max={5} size="sm" />
-              <span className="small">{c.assignees.map((id2) => cms.officerName(id2).split(" ")[1]).join(", ")}</span>
-            </div>
+            <button className="btn btn-outline btn-sm" onClick={() => setModal("assignees")}>
+              <Icon name="users" size={13} /> ดูชื่อผู้รับผิดชอบ ({c.assignees.length})
+            </button>
           )}</div>
           <div className="k">วันลงรับ POST</div><div className="v">{cms.fmtThaiDate(c.postDate)}</div>
           <div className="k">วันที่หนังสือ</div><div className="v">{cms.fmtThaiDate(c.letterDate)}</div>
@@ -325,6 +340,26 @@ export default function CaseDetailPage() {
         </div>
         {c.description && <p style={{ marginTop: 12, color: "var(--text)", lineHeight: 1.7, fontSize: 13.5 }}>{c.description}</p>}
       </DataCard>
+
+      {c.followups && c.followups.length > 0 && (
+        <DataCard title={c.status === "07" ? "การแจ้งความ/ดำเนินคดี" : c.status === "09" || c.status === "05" ? "การเสนอนายแพทย์" : "การส่งต่อหน่วยงาน"} icon="send"
+          actions={<span className="chip">{c.followups.length} รายการ</span>}>
+          <div className="stack-sm">
+            {c.followups.map((f) => (
+              <div key={f.id} className="row" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, alignItems: "flex-start" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--primary-100)", color: "var(--primary-700)" }}>
+                  <Icon name="send" size={15} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{f.destination || "—"} · {cms.fmtThaiDate(f.date)}</div>
+                  {f.detail && <div className="small" style={{ marginTop: 2 }}>{f.detail}</div>}
+                  <div className="small muted" style={{ marginTop: 3, fontSize: 11 }}>โดย {f.user || "—"}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DataCard>
+      )}
 
       {c.investigations && c.investigations.length > 0 && (
         <DataCard title="การตรวจสอบข้อเท็จจริง" icon="loupe" actions={<span className="chip">{c.investigations.length} รายการ</span>}>
@@ -577,6 +612,28 @@ export default function CaseDetailPage() {
       {modal === "invest" && <InvestigationModal c={c} onClose={() => setModal(null)} onAddEvent={addInvestEvent} onChoose={selectInvestPath} />}
       {modal === "board" && <BoardModal c={c} onClose={() => setModal(null)} onSaveMeeting={saveBoardMeeting} onApply={applyBoard} />}
       {modal === "fine" && <FineModal c={c} onClose={() => setModal(null)} onSave={savePayment} onCloseCase={doCloseFine} />}
+      {modal === "followup" && <FollowupModal c={c} onClose={() => setModal(null)} onAdd={addFollowupRecord} onCloseCase={doCloseFollowup} />}
+      {modal === "assignees" && (
+        <Modal open onClose={() => setModal(null)} title="ผู้รับผิดชอบเคส" sub={`${c.etracking} · ${c.assignees.length} คน`}
+          footer={<button className="btn btn-outline" onClick={() => setModal(null)}>ปิด</button>}>
+          <div className="stack-sm">
+            {c.assignees.map((oid) => {
+              const o = cms.MASTER.officers.find((x) => x.id === oid);
+              return (
+                <div key={oid} className="row" style={{ gap: 12, padding: "12px 14px", border: "1px solid var(--border)", borderRadius: 10, alignItems: "center" }}>
+                  <Avatar name={o?.name || oid} size="md" />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{o?.name || cms.officerName(oid)}</div>
+                    <div className="small muted">
+                      {[o?.phone, o?.email].filter(Boolean).join(" · ") || "—"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
       {modal === "return" && (
         <Modal open onClose={() => setModal(null)} title="ส่งกลับให้เจ้าหน้าที่แก้ไข" sub={c.etracking + " · " + c.title}
           footer={<>
