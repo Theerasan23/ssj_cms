@@ -12,6 +12,10 @@ const usersRoutes = require("./routes/users.routes");
 
 const app = express();
 
+// Behind one reverse proxy in production → trust the first X-Forwarded-* hop so req.ip
+// is the real client (login rate-limiter) and req.protocol reflects https.
+app.set("trust proxy", 1);
+
 const origins = (process.env.CORS_ORIGIN || "http://localhost:3000").split(",").map((s) => s.trim());
 app.use(cors({ origin: origins, credentials: true }));
 app.use(express.json({ limit: "2mb" }));

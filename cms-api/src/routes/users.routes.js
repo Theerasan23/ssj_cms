@@ -5,6 +5,16 @@ const users = require("../services/users.service");
 const router = express.Router();
 const adminOnly = [requireAuth, requireRole("admin")];
 
+// GET /api/users/me — current user (kept off /api/auth so it never clashes with NextAuth)
+router.get("/me", requireAuth, async (req, res, next) => {
+  try {
+    const u = await users.getAuthUserById(req.user.userId);
+    if (!u) return res.status(401).json({ error: "ไม่พบผู้ใช้" });
+    if (!u.active) return res.status(403).json({ error: "บัญชีถูกปิดใช้งาน" });
+    res.json({ user: u });
+  } catch (e) { next(e); }
+});
+
 // PATCH /api/users/me — any user edits their own profile (name/email/phone/password)
 router.patch("/me", requireAuth, async (req, res, next) => {
   try {

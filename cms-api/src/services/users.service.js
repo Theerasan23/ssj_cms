@@ -1,6 +1,22 @@
 const pool = require("../db");
 const bcrypt = require("bcryptjs");
 
+// Current-user lookup in the same shape the login/session uses (mirrors auth.routes mapUser).
+const AUTH_USER_SELECT = `
+  SELECT u.id, u.username, u.role_id, u.name, u.initials, u.email, u.phone, u.officer_id, u.active,
+         r.name AS role_name, r.role_label, r.initials AS role_initials, r.descr, r.officer_id AS role_officer_id
+  FROM users u JOIN roles r ON r.id = u.role_id`;
+async function getAuthUserById(id) {
+  const [rows] = await pool.query(`${AUTH_USER_SELECT} WHERE u.id = ?`, [id]);
+  if (!rows.length) return null;
+  const u = rows[0];
+  return {
+    roleId: u.role_id, userId: u.id, name: u.name || u.role_name, role: u.role_label,
+    initials: u.initials || u.role_initials, desc: u.descr, officerId: u.officer_id || u.role_officer_id,
+    username: u.username, email: u.email || "", phone: u.phone || "", active: !!u.active,
+  };
+}
+
 async function listUsers() {
   const [rows] = await pool.query(
     `SELECT u.id, u.username, u.role_id AS roleId, u.name, u.initials, u.email, u.phone, u.active, u.officer_id AS officerId, u.last_login AS lastLogin, r.role_label AS roleLabel
@@ -89,4 +105,4 @@ async function updateProfile(userId, body) {
   return { ok: true };
 }
 
-module.exports = { listUsers, createUser, updateUser, setActive, deleteUser, updateProfile };
+module.exports = { getAuthUserById, listUsers, createUser, updateUser, setActive, deleteUser, updateProfile };
