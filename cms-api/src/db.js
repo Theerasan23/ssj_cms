@@ -1,0 +1,17 @@
+const mysql = require("mysql2/promise");
+
+// Shared connection pool, configured from .env
+const pool = mysql.createPool({
+  host: process.env.MYSQL_HOST || "localhost",
+  port: Number(process.env.MYSQL_PORT) || 3306,
+  user: process.env.MYSQL_USER || "root",
+  password: process.env.MYSQL_PASSWORD || "",
+  database: process.env.MYSQL_DATABASE || "cms",
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  charset: "utf8mb4",
+  dateStrings: true, // return DATE/DATETIME as 'YYYY-MM-DD' strings (matches prototype)
+});
+
+module.exports = pool;

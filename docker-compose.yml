@@ -1,0 +1,54 @@
+# CMS stack (API + web) — connects to your EXISTING MySQL, does not create one.
+#   docker compose up -d --build
+# Ports (host): web 3021, api 3022.
+# The API reaches your existing DB via host.docker.internal (the MySQL published on the host,
+# e.g. the `form_db` container on :3306). Set MYSQL_* in a root .env — see .env.example.
+name: cms
+
+services:
+  api:
+    build: ./cms-api
+    container_name: cms-api
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets the container reach the host's MySQL
+    environment:
+      PORT: 3022
+      MYSQL_HOST: ${MYSQL_HOST:-host.docker.internal}
+      MYSQL_PORT: ${MYSQL_PORT:-3306}
+      MYSQL_USER: ${MYSQL_USER:-admin}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-123456}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-cms}
+      JWT_SECRET: ${JWT_SECRET:-dev-compose-jwt-secret-change-me-please}
+      JWT_EXPIRES: 12h
+      CORS_ORIGIN: http://localhost:${WEB_PORT:-3021}
+      UPLOAD_DIR: /app/uploads
+      # AUTO_SEED stays OFF by default so an existing DB is never reset. Only set it
+      # to "true" against a brand-new/empty database you want auto-seeded.
+      AUTO_SEED: ${AUTO_SEED:-false}
+    ports:
+      - "${API_PORT:-3022}:3022"
+    volumes:
+      - api_uploads:/app/uploads
+
+  web:
+    build:
+      context: ./cms-web
+      args:
+        # baked into the client bundle → must be reachable from the BROWSER
+        NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-3022}/api
+    container_name: cms-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      PORT: 3021
+      # server-side calls (NextAuth) reach the api container by service name
+      API_URL: http://api:3022/api
+      NEXTAUTH_URL: http://localhost:${WEB_PORT:-3021}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-compose-nextauth-secret-change-me}
+    ports:
+      - "${WEB_PORT:-3021}:3021"
+
+volumes:
+  api_uploads:

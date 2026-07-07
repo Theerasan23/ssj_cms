@@ -1,0 +1,116 @@
+/* =========================================================
+   Design Tokens — CMS Complaint Management
+   ========================================================= */
+:root {
+  /* Brand */
+  --primary-900: #0f2c47;
+  --primary-800: #163c61;
+  --primary-700: #1F4E79;   /* primary */
+  --primary-600: #2E74B5;   /* secondary */
+  --primary-500: #4a8fcc;
+  --primary-100: #e7f0f8;
+  --primary-50:  #f3f7fb;
+
+  --accent-700: #c1430a;
+  --accent-600: #E65100;
+  --accent-500: #f57b30;
+  --accent-100: #fde7d8;
+
+  --success-700: #1f6628;
+  --success-600: #2E7D32;
+  --success-100: #dff1e1;
+
+  --warning-700: #bd6a00;
+  --warning-600: #F57F17;
+  --warning-100: #fde9c9;
+
+  --error-700:   #9c1d1d;
+  --error-600:   #C62828;
+  --error-100:   #fadcdc;
+
+  --purple-600: #6b3fa0;
+  --purple-100: #ece0f7;
+
+  --teal-600:   #0e7c8a;
+  --teal-100:   #d6f0f3;
+
+  /* Neutrals */
+  --bg:         #F5F7FA;
+  --surface:    #FFFFFF;
+  --surface-2:  #FAFAFA;
+  --border:     #e2e6ec;
+  --border-strong: #c8cfd9;
+  --text:       #1d242c;
+  --text-muted: #5a6573;
+  --text-soft:  #8a93a0;
+
+  /* Type */
+  --font-base: "Sarabun", "IBM Plex Sans Thai", "Noto Sans Thai", system-ui, sans-serif;
+  --font-display: "Sarabun", "IBM Plex Sans Thai", "Noto Sans Thai", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+
+  /* Sizes */
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-base: 14px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 20px;
+  --fs-2xl: 24px;
+  --fs-3xl: 30px;
+  --fs-4xl: 38px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+
+  /* Radius */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-full: 999px;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(15, 44, 71, 0.06);
+  --shadow-sm: 0 2px 4px rgba(15, 44, 71, 0.07);
+  --shadow-md: 0 6px 16px -4px rgba(15, 44, 71, 0.12), 0 2px 4px rgba(15, 44, 71, 0.06);
+  --shadow-lg: 0 20px 40px -12px rgba(15, 44, 71, 0.22), 0 4px 8px rgba(15, 44, 71, 0.06);
+
+  /* Status colors (8) */
+  --st-01-fg: #4a5360;  --st-01-bg: #ebeef2;
+  --st-02-fg: #1F4E79;  --st-02-bg: #e0ecf7;
+  --st-03-fg: #6b3fa0;  --st-03-bg: #ece0f7;
+  --st-04-fg: #c1430a;  --st-04-bg: #fde7d8;
+  --st-05-fg: #1f6628;  --st-05-bg: #dff1e1;
+  --st-06-fg: #0e7c8a;  --st-06-bg: #d6f0f3;
+  --st-07-fg: #9c1d1d;  --st-07-bg: #fadcdc;
+  --st-08-fg: #2a323c;  --st-08-bg: #d8dce2;
+}
+
+/* Reset */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-base);
+  font-size: var(--fs-base);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern";
+  line-height: 1.5;
+}
+button { font-family: inherit; cursor: pointer; }
+input, textarea, select, button { font-family: inherit; font-size: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #aab3bf; }

@@ -1,0 +1,53 @@
+# ===== Dependencies =====
+node_modules/
+.pnp
+.pnp.*
+.yarn/*
+
+# ===== Secrets / environment (NEVER commit real values) =====
+# actual env files are ignored; *.example templates below are kept
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+cms-api/.env
+cms-web/.env.local
+# keep the templates
+!.env.example
+!**/*.env.example
+!cms-api/.env.example
+!cms-web/.env.local.example
+
+# ===== Build output =====
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# ===== Uploaded files (user data, generated at runtime) =====
+cms-api/uploads/
+uploads/
+
+# ===== Logs =====
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ===== OS / editor cruft =====
+.DS_Store
+Thumbs.db
+*.pem
+*.swp
+.idea/
+.vscode/
+
+# ===== Claude Code (keep shared config, ignore local overrides) =====
+.claude/settings.local.json
+
+# ===== Test / coverage =====
+/coverage
