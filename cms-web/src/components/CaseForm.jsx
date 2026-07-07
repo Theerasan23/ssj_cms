@@ -9,9 +9,10 @@ export function blankCaseForm(todayIso) {
   return {
     etracking: "", letterNo: "", letterDate: todayIso, postNo: "", postDate: todayIso,
     complainant: { name: "", phone: "", email: "", address: "", channel: "", anonymous: false },
-    respondent: { licensee: "", business: "", address: "", district: "", licenseNo: "" },
+    respondent: { licensee: "", business: "", address: "", district: "", subdistrict: "", licenseNo: "" },
     title: "", laws: [], source: "", product: "", productLicense: "", problems: [],
-    bountyAmount: "", description: "", attachments: [],
+    bountyAmount: "", bountyRequested: false, bountyFirstName: "", bountyLastName: "", bountyNo: "",
+    description: "", attachments: [],
   };
 }
 
@@ -20,15 +21,18 @@ export function caseToForm(c) {
   return {
     etracking: c.etracking, letterNo: c.letterNo || "", letterDate: c.letterDate || "", postNo: c.postNo || "", postDate: c.postDate || "",
     complainant: { name: c.complainant.name || "", phone: c.complainant.phone || "", email: c.complainant.email || "", address: c.complainant.address || "", channel: c.complainant.channel || "", anonymous: !!c.complainant.anonymous },
-    respondent: { licensee: c.respondent.licensee || "", business: c.respondent.business || "", address: c.respondent.address || "", district: c.respondent.district || "", licenseNo: c.respondent.licenseNo || "" },
+    respondent: { licensee: c.respondent.licensee || "", business: c.respondent.business || "", address: c.respondent.address || "", district: c.respondent.district || "", subdistrict: c.respondent.subdistrict || "", licenseNo: c.respondent.licenseNo || "" },
     title: c.title || "", laws: c.laws || [], source: c.source || "", product: c.product || "", productLicense: c.productLicense || "", problems: c.problems || [],
     // attachments are managed on the case detail page (view/download/delete); the form's
     // upload zone is only for adding NEW files, so start it empty when editing.
-    bountyAmount: c.bountyAmount != null ? String(c.bountyAmount) : "", description: c.description || "", attachments: [],
+    bountyAmount: c.bountyAmount != null ? String(c.bountyAmount) : "",
+    bountyRequested: !!c.bountyRequested, bountyFirstName: c.bountyFirstName || "", bountyLastName: c.bountyLastName || "", bountyNo: c.bountyNo || "",
+    description: c.description || "", attachments: [],
   };
 }
 
-export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner, onSubmit, onCancel }) {
+// `secondary` (optional) renders a second action button, e.g. { label: "บันทึกร่าง", icon: "edit", onSubmit }.
+export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner, onSubmit, secondary, onCancel }) {
   const { cms } = useApp();
   const toast = useToasts();
   const todayIso = cms.TODAY;
@@ -65,12 +69,16 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
     if (form.laws.length === 0) e.laws = "เลือกพรบ. อย่างน้อย 1 หมวด";
     if (!form.source) e.source = "เลือกที่มาของผู้ร้อง";
     if (form.problems.length === 0) e.problems = "เลือกประเภทปัญหาอย่างน้อย 1 ข้อ";
+    if (form.bountyRequested) {
+      if (!form.bountyFirstName.trim()) e.bountyFirstName = "กรุณากรอกชื่อ";
+      if (!form.bountyLastName.trim()) e.bountyLastName = "กรุณากรอกนามสกุล";
+    }
     setErrors(e);
     setWarnings(w);
     return Object.keys(e).length === 0;
   }
 
-  async function submit() {
+  async function submit(handler = onSubmit) {
     if (!validate()) {
       toast.push({ kind: "error", title: "กรอกข้อมูลไม่ครบ", msg: "กรุณาตรวจสอบฟิลด์ที่มีเครื่องหมาย *" });
       setTimeout(() => {
@@ -81,13 +89,17 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
     }
     setSaving(true);
     try {
-      await onSubmit({
+      await handler({
         etracking: form.etracking, letterNo: form.letterNo, letterDate: form.letterDate,
         postNo: form.postNo, postDate: form.postDate, title: form.title,
         laws: form.laws, problems: form.problems, source: form.source,
         complainant: { ...form.complainant }, respondent: { ...form.respondent },
         product: form.product, productLicense: form.productLicense,
-        bountyAmount: form.bountyAmount ? Number(form.bountyAmount) : null,
+        bountyAmount: form.bountyAmount || null,
+        bountyRequested: form.bountyRequested,
+        bountyFirstName: form.bountyRequested ? form.bountyFirstName : null,
+        bountyLastName: form.bountyRequested ? form.bountyLastName : null,
+        bountyNo: form.bountyRequested ? form.bountyNo : null,
         description: form.description, attachments: form.attachments,
       });
     } catch (err) {
@@ -187,9 +199,17 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
                 <textarea className="textarea" rows={2} placeholder="ที่อยู่ของสถานประกอบการ" value={form.respondent.address} onChange={(e) => update("respondent.address", e.target.value)} />
               </FormField>
               <FormField label="อำเภอ">
-                <select className="select" value={form.respondent.district} onChange={(e) => update("respondent.district", e.target.value)}>
+                <select className="select" value={form.respondent.district}
+                  onChange={(e) => { update("respondent.district", e.target.value); update("respondent.subdistrict", ""); }}>
                   <option value="">-- เลือกอำเภอ --</option>
                   {cms.MASTER.districts.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </FormField>
+              <FormField label="ตำบล" hint={!form.respondent.district ? "เลือกอำเภอก่อน" : undefined}>
+                <select className="select" value={form.respondent.subdistrict} disabled={!form.respondent.district}
+                  onChange={(e) => update("respondent.subdistrict", e.target.value)}>
+                  <option value="">-- เลือกตำบล --</option>
+                  {(cms.MASTER.subdistricts?.[form.respondent.district] || []).map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </FormField>
               <FormField label="เลขที่ใบอนุญาต">
@@ -226,10 +246,27 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
               <ChipPicker options={cms.MASTER.problems.map((p) => ({ id: p, label: p }))} value={form.problems} onChange={(v) => update("problems", v)} />
             </FormField>
             <div className="form-grid cols-2">
-              <FormField label="สินบนรางวัล (บาท)">
-                <input type="number" className="input mono" placeholder="0.00" value={form.bountyAmount} onChange={(e) => update("bountyAmount", e.target.value)} />
+              <FormField label="สินบนนำจับ">
+                <input className="input" placeholder="เช่น 5,000 บาท / ตามประกาศฯ" value={form.bountyAmount} onChange={(e) => update("bountyAmount", e.target.value)} />
               </FormField>
             </div>
+            <label className="checkbox">
+              <input type="checkbox" checked={form.bountyRequested} onChange={(e) => update("bountyRequested", e.target.checked)} />
+              ประสงค์รับสินบนนำจับ
+            </label>
+            {form.bountyRequested && (
+              <div className="form-grid cols-2">
+                <FormField label="ชื่อ (ผู้ประสงค์รับ)" req error={errors.bountyFirstName}>
+                  <input className={`input ${errors.bountyFirstName ? "error" : ""}`} placeholder="เช่น สมหมาย" value={form.bountyFirstName} onChange={(e) => update("bountyFirstName", e.target.value)} />
+                </FormField>
+                <FormField label="นามสกุล (ผู้ประสงค์รับ)" req error={errors.bountyLastName}>
+                  <input className={`input ${errors.bountyLastName ? "error" : ""}`} placeholder="เช่น ใจดี" value={form.bountyLastName} onChange={(e) => update("bountyLastName", e.target.value)} />
+                </FormField>
+                <FormField label="เลขสินบนนำจับ" full>
+                  <input className="input mono" placeholder="เช่น สนจ. 12/2569" value={form.bountyNo} onChange={(e) => update("bountyNo", e.target.value)} />
+                </FormField>
+              </div>
+            )}
             <FormField label="รายละเอียดเพิ่มเติม" hint="อธิบายข้อเท็จจริงและสิ่งที่ผู้ร้องเรียนต้องการ">
               <textarea className="textarea" rows={4} placeholder="รายละเอียดของเรื่องร้องเรียน..." value={form.description} onChange={(e) => update("description", e.target.value)} />
             </FormField>
@@ -257,7 +294,12 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
       <div style={{ position: "sticky", bottom: 0, marginTop: 24, padding: "16px 0", background: "linear-gradient(0deg, var(--bg) 70%, transparent)", zIndex: 5 }}>
         <div className="row end" style={{ gap: 10 }}>
           <button className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
-          <button className="btn btn-primary btn-lg" disabled={saving} onClick={submit}><Icon name="check" size={16} /> {submitLabel}</button>
+          {secondary && (
+            <button className="btn btn-outline btn-lg" disabled={saving} onClick={() => submit(secondary.onSubmit)}>
+              <Icon name={secondary.icon || "edit"} size={16} /> {secondary.label}
+            </button>
+          )}
+          <button className="btn btn-primary btn-lg" disabled={saving} onClick={() => submit()}><Icon name="check" size={16} /> {submitLabel}</button>
         </div>
       </div>
     </main>

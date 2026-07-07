@@ -170,6 +170,22 @@ export default function CaseDetailPage() {
   const doUnlock = () => run(() => api.post(`/cases/${c.id}/unlock`, {}), "ปลดล็อกเคสแล้ว", "ดำเนินการต่อได้ตามปกติ");
   const doCancel = () => run(() => api.post(`/cases/${c.id}/cancel`, { reason: cancelReason }), "ยกเลิกเคสแล้ว");
   const doReturn = () => { if (!returnReason.trim()) { toast.push({ kind: "warn", title: "กรุณาระบุเหตุผล" }); return; } run(() => api.post(`/cases/${c.id}/return`, { reason: returnReason }), "ส่งกลับให้เจ้าหน้าที่แล้ว", "เจ้าหน้าที่จะแก้ไขและส่งใหม่"); };
+  // draft or returned case → submit for head approval, then jump to "เคสของฉัน"
+  async function doSubmitDraft() {
+    if (guardLocked()) return;
+    try {
+      await api.post(`/cases/${c.id}/submit`, {});
+      actions.reloadNotifications?.();
+      toast.push({
+        kind: "success",
+        title: c.returned ? "ส่งขออนุมัติอีกครั้งแล้ว" : "ส่งขออนุมัติแล้ว",
+        msg: "หัวหน้ากลุ่มงานได้รับแจ้งเตือนแล้ว (สถานะ 'รอมอบหมาย')",
+      });
+      router.push("/cases?scope=mine");
+    } catch (e) {
+      toast.push({ kind: "danger", title: "ส่งขออนุมัติไม่สำเร็จ", msg: e.message });
+    }
+  }
 
   const allFinesPaid = c.fines?.length > 0 && c.fines.every((f) => f.paid);
   const latestMeeting = c.boardMeetings?.length ? c.boardMeetings[c.boardMeetings.length - 1] : null;
@@ -177,6 +193,8 @@ export default function CaseDetailPage() {
   const waitingBoard = c.status === "03" && latestMeeting && !latestMeeting.resolution;
   const primaryAction = (() => {
     if (closedCase || locked) return null;
+    if (c.status === "01" && c.isDraft) return { label: "ส่งขออนุมัติหัวหน้า", icon: "send", onClick: doSubmitDraft, disabled: c.createdByUserId !== role.userId };
+    if (c.status === "01" && c.returned && c.createdByUserId === role.userId) return { label: "ส่งขออนุมัติอีกครั้ง", icon: "send", onClick: doSubmitDraft };
     if (c.status === "01") return { label: "มอบหมายเจ้าหน้าที่", icon: "users", onClick: () => setModal("assign"), disabled: !canAssign };
     if (c.status === "02") return { label: "บันทึกการตรวจสอบ", icon: "loupe", onClick: () => setModal("invest") };
     if (c.status === "03") return { label: "บันทึกมติคณะกรรมการ", icon: "users", onClick: () => setModal("board") };
@@ -287,7 +305,7 @@ export default function CaseDetailPage() {
           <div className="k">ผู้รับอนุญาต</div><div className="v">{c.respondent.licensee || "—"}</div>
           <div className="k">สถานประกอบการ</div><div className="v">{c.respondent.business || "—"}</div>
           <div className="k">ที่อยู่</div><div className="v">{c.respondent.address || "—"}</div>
-          <div className="k">อำเภอ</div><div className="v">{c.respondent.district || "—"}</div>
+          <div className="k">ตำบล / อำเภอ</div><div className="v">{[c.respondent.subdistrict, c.respondent.district].filter(Boolean).join(" / ") || "—"}</div>
           <div className="k">เลขที่ใบอนุญาต</div><div className="v mono">{c.respondent.licenseNo || "—"}</div>
         </div>
       </DataCard>
@@ -299,7 +317,11 @@ export default function CaseDetailPage() {
           <div className="k">ผลิตภัณฑ์/บริการ</div><div className="v">{c.product || "—"}</div>
           <div className="k">เลข อย./ทะเบียน</div><div className="v mono">{c.productLicense || "—"}</div>
           <div className="k">ประเภทปัญหา</div><div className="v"><div className="tag-list">{c.problems.map((p) => <span key={p} className="chip accent">{p}</span>)}</div></div>
-          {c.bountyAmount && (<><div className="k">สินบนรางวัล</div><div className="v">{cms.fmtMoney(c.bountyAmount)}</div></>)}
+          {c.bountyAmount && (<><div className="k">สินบนนำจับ</div><div className="v">{c.bountyAmount}</div></>)}
+          {c.bountyRequested && (<>
+            <div className="k">ผู้ประสงค์รับสินบน</div><div className="v">{[c.bountyFirstName, c.bountyLastName].filter(Boolean).join(" ") || "—"}</div>
+            <div className="k">เลขสินบนนำจับ</div><div className="v mono">{c.bountyNo || "—"}</div>
+          </>)}
         </div>
         {c.description && <p style={{ marginTop: 12, color: "var(--text)", lineHeight: 1.7, fontSize: 13.5 }}>{c.description}</p>}
       </DataCard>
@@ -480,7 +502,7 @@ export default function CaseDetailPage() {
             onClick={() => canEditCase && router.push(`/cases/${c.id}/edit`)}>
             <Icon name={locked ? "lock" : "edit"} size={14} /> {locked ? "ล็อก" : "แก้ไข"}
           </button>
-          {canAssign && c.status === "01" && !c.returned && (
+          {canAssign && c.status === "01" && !c.returned && !c.isDraft && (
             <button className="btn btn-outline btn-sm" style={{ color: "var(--warning-700)", borderColor: "color-mix(in oklab, var(--warning-600) 40%, var(--border))" }} onClick={() => setModal("return")}>
               <Icon name="arrow-left" size={14} /> ส่งกลับให้แก้ไข
             </button>
@@ -504,6 +526,21 @@ export default function CaseDetailPage() {
           {canUnlock && (
             <button className="btn btn-sm" style={{ alignSelf: "center", background: "var(--error-700)", color: "#fff", borderColor: "var(--error-700)", whiteSpace: "nowrap" }} onClick={doUnlock}>
               <Icon name="lock-open" size={14} /> ปลดล็อก / ขยายกำหนด
+            </button>
+          )}
+        </div>
+      )}
+
+      {c.isDraft && !locked && (
+        <div className="lock-banner" style={{ background: "linear-gradient(135deg, color-mix(in oklab, var(--primary-50) 85%, var(--surface)) 0%, color-mix(in oklab, var(--primary-50) 30%, var(--surface)) 100%)", borderColor: "color-mix(in oklab, var(--primary-700) 22%, transparent)", color: "var(--primary-700)" }}>
+          <div className="lock-ic" style={{ background: "var(--primary-700)" }}><Icon name="edit" size={20} /></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="lock-title">เคสนี้เป็นร่าง — ยังไม่ได้ส่งขออนุมัติ</div>
+            <div className="lock-body">หัวหน้ากลุ่มงานจะยังไม่เห็นเคสนี้ แก้ไขให้เรียบร้อยแล้วกด "ส่งขออนุมัติหัวหน้า" · SLA นับจากวันลงรับ POST แล้ว อย่าลืมส่งภายในกำหนด</div>
+          </div>
+          {c.createdByUserId === role.userId && (
+            <button className="btn btn-sm" style={{ alignSelf: "center", background: "var(--primary-700)", color: "#fff", borderColor: "var(--primary-700)", whiteSpace: "nowrap" }} onClick={doSubmitDraft}>
+              <Icon name="send" size={14} /> ส่งขออนุมัติหัวหน้า
             </button>
           )}
         </div>

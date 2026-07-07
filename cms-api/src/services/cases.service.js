@@ -4,11 +4,12 @@ const pool = require("../db");
 const sla = require("./sla.service");
 
 const CASE_SELECT = `
-  SELECT c.*, s.name AS source_name, ch.name AS channel_name, d.name AS district_name, cur.name AS created_by_name
+  SELECT c.*, s.name AS source_name, ch.name AS channel_name, d.name AS district_name, sd.name AS subdistrict_name, cur.name AS created_by_name
   FROM cases c
-  LEFT JOIN sources   s   ON s.id   = c.source_id
-  LEFT JOIN channels  ch  ON ch.id  = c.complainant_channel_id
-  LEFT JOIN districts d   ON d.id   = c.respondent_district_id
+  LEFT JOIN sources      s  ON s.id  = c.source_id
+  LEFT JOIN channels     ch ON ch.id = c.complainant_channel_id
+  LEFT JOIN districts    d  ON d.id  = c.respondent_district_id
+  LEFT JOIN subdistricts sd ON sd.id = c.respondent_subdistrict_id
   LEFT JOIN users     cu  ON cu.id  = c.created_by_user_id
   LEFT JOIN roles     cur ON cur.id = cu.role_id
 `;
@@ -73,11 +74,17 @@ function buildShape(r, rel) {
       business: r.respondent_business || "",
       address: r.respondent_address || "",
       district: r.district_name || "",
+      subdistrict: r.subdistrict_name || "",
       licenseNo: r.respondent_license_no || "",
     },
     product: r.product || "",
     productLicense: r.product_license || "",
-    bountyAmount: r.bounty_amount != null ? Number(r.bounty_amount) : null,
+    // free text since 2026-07 (e.g. "5,000 บาท ตามประกาศฯ") — legacy rows hold the old number as string
+    bountyAmount: r.bounty_amount || null,
+    bountyRequested: !!r.bounty_requested,
+    bountyFirstName: r.bounty_first_name || "",
+    bountyLastName: r.bounty_last_name || "",
+    bountyNo: r.bounty_no || "",
     description: r.description || "",
     assignees: rel.assignees,
     assignedAt: r.assigned_at,
@@ -96,6 +103,7 @@ function buildShape(r, rel) {
     createdByName: r.created_by_name || r.created_by,
     returned: !!r.returned,
     returnReason: r.return_reason || "",
+    isDraft: !!r.is_draft,
     createdAt: r.created_at,
     timeline: rel.timeline,
   };
@@ -189,6 +197,8 @@ async function listCases(filters, currentRole) {
   let all = await getAllCases();
 
   all = all.filter((c) => {
+    // drafts are private to their creator until submitted for approval
+    if (c.isDraft && !(currentRole && currentRole.userId != null && c.createdByUserId === currentRole.userId)) return false;
     if (scope === "mine" && currentRole) {
       const byMe = currentRole.userId != null && c.createdByUserId === currentRole.userId;
       const assignedToMe = currentRole.officerId && c.assignees.includes(currentRole.officerId);
@@ -221,6 +231,15 @@ async function listCases(filters, currentRole) {
 async function idByName(conn, table, name) {
   if (!name) return null;
   const [rows] = await conn.query(`SELECT id FROM ${table} WHERE name = ? LIMIT 1`, [name]);
+  return rows.length ? rows[0].id : null;
+}
+
+// subdistrict names repeat across districts (e.g. "บ้านใหม่") → resolve within the district
+async function subdistrictIdByName(conn, districtName, name) {
+  if (!districtName || !name) return null;
+  const [rows] = await conn.query(
+    `SELECT sd.id FROM subdistricts sd JOIN districts d ON d.id = sd.district_id
+     WHERE d.name = ? AND sd.name = ? LIMIT 1`, [districtName, name]);
   return rows.length ? rows[0].id : null;
 }
 
@@ -290,6 +309,10 @@ function validateCreate(p) {
   if (!Array.isArray(p.laws) || p.laws.length === 0) errors.push("เลือกพรบ. อย่างน้อย 1 หมวด");
   if (!p.source) errors.push("เลือกที่มาของผู้ร้อง");
   if (!Array.isArray(p.problems) || p.problems.length === 0) errors.push("เลือกประเภทปัญหาอย่างน้อย 1 ข้อ");
+  if (p.bountyRequested) {
+    if (!p.bountyFirstName) errors.push("กรุณากรอกชื่อผู้ประสงค์รับสินบนนำจับ");
+    if (!p.bountyLastName) errors.push("กรุณากรอกนามสกุลผู้ประสงค์รับสินบนนำจับ");
+  }
   return errors;
 }
 
@@ -324,28 +347,31 @@ async function createCase(payload, user) {
     await conn.beginTransaction();
     const id = newCaseId();
     const today = sla.TODAY();
+    const isDraft = !!payload.draft;
     const sourceId = await idByName(conn, "sources", payload.source);
     const channelId = await idByName(conn, "channels", payload.complainant?.channel);
     const districtId = await idByName(conn, "districts", payload.respondent?.district);
+    const subdistrictId = await subdistrictIdByName(conn, payload.respondent?.district, payload.respondent?.subdistrict);
 
     await conn.query(
       `INSERT INTO cases (
         id, etracking, letter_no, letter_date, post_no, post_date, title,
-        source_id, product, product_license, bounty_amount, description, status_code,
+        source_id, product, product_license, bounty_amount, bounty_requested, bounty_first_name, bounty_last_name, bounty_no, description, status_code,
         complainant_name, complainant_phone, complainant_email, complainant_address, complainant_anonymous, complainant_channel_id,
-        respondent_licensee, respondent_business, respondent_address, respondent_license_no, respondent_district_id,
-        created_by, created_by_user_id, created_at
-      ) VALUES (?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?)`,
+        respondent_licensee, respondent_business, respondent_address, respondent_license_no, respondent_district_id, respondent_subdistrict_id,
+        is_draft, created_by, created_by_user_id, created_at
+      ) VALUES (?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?)`,
       [
         id, payload.etracking, payload.letterNo, payload.letterDate || null, payload.postNo, payload.postDate || null, payload.title,
         sourceId, payload.product || null, payload.productLicense || null,
-        payload.bountyAmount != null && payload.bountyAmount !== "" ? Number(payload.bountyAmount) : null,
+        payload.bountyAmount || null,
+        payload.bountyRequested ? 1 : 0, payload.bountyFirstName || null, payload.bountyLastName || null, payload.bountyNo || null,
         payload.description || null, "01",
         payload.complainant?.name || null, payload.complainant?.phone || null, payload.complainant?.email || null,
         payload.complainant?.address || null, payload.complainant?.anonymous ? 1 : 0, channelId,
         payload.respondent?.licensee || null, payload.respondent?.business || null, payload.respondent?.address || null,
-        payload.respondent?.licenseNo || null, districtId,
-        user.roleId, user.userId ?? null, today,
+        payload.respondent?.licenseNo || null, districtId, subdistrictId,
+        isDraft ? 1 : 0, user.roleId, user.userId ?? null, today,
       ]
     );
 
@@ -357,9 +383,14 @@ async function createCase(payload, user) {
       if (pid) await conn.query("INSERT IGNORE INTO case_problems (case_id, problem_id) VALUES (?, ?)", [id, pid]);
     }
     // real files are uploaded separately via POST /cases/:id/attachments after creation
-    await addTimeline(conn, id, { title: "สร้างเคสในระบบ", user: user.name, kind: "create" });
-    // heads/admins have the approval queue → notify them of the new case
-    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคสใหม่รออนุมัติ: ${payload.title}`, caseId: id });
+    if (isDraft) {
+      // draft: visible only to the creator — heads are notified when it is submitted
+      await addTimeline(conn, id, { title: "บันทึกร่างเคส (ยังไม่ส่งขออนุมัติ)", user: user.name, kind: "create" });
+    } else {
+      await addTimeline(conn, id, { title: "สร้างเคสในระบบ", user: user.name, kind: "create" });
+      // heads/admins have the approval queue → notify them of the new case
+      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคสใหม่รออนุมัติ: ${payload.title}`, caseId: id });
+    }
 
     await conn.commit();
     return id;
@@ -374,6 +405,7 @@ async function createCase(payload, user) {
 // ---------- workflow ----------
 async function assignCase(id, officerIds, byRole, byName, note) {
   const c = await assertActionable(id, ["01"]);
+  if (c.isDraft) { const e = new Error("เคสยังเป็นร่าง — ผู้สร้างต้องส่งขออนุมัติก่อนจึงจะมอบหมายได้"); e.status = 409; throw e; }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -730,24 +762,25 @@ async function updateCase(id, payload, user) {
     const sourceId = await idByName(conn, "sources", payload.source);
     const channelId = await idByName(conn, "channels", payload.complainant?.channel);
     const districtId = await idByName(conn, "districts", payload.respondent?.district);
-    const wasReturned = c.returned;
+    const subdistrictId = await subdistrictIdByName(conn, payload.respondent?.district, payload.respondent?.subdistrict);
 
     await conn.query(
       `UPDATE cases SET
         etracking=?, letter_no=?, letter_date=?, post_no=?, post_date=?, title=?,
-        source_id=?, product=?, product_license=?, bounty_amount=?, description=?,
+        source_id=?, product=?, product_license=?, bounty_amount=?, bounty_requested=?, bounty_first_name=?, bounty_last_name=?, bounty_no=?, description=?,
         complainant_name=?, complainant_phone=?, complainant_email=?, complainant_address=?, complainant_anonymous=?, complainant_channel_id=?,
-        respondent_licensee=?, respondent_business=?, respondent_address=?, respondent_license_no=?, respondent_district_id=?,
-        returned=0, return_reason=NULL
+        respondent_licensee=?, respondent_business=?, respondent_address=?, respondent_license_no=?, respondent_district_id=?, respondent_subdistrict_id=?
        WHERE id=?`,
       [
         payload.etracking, payload.letterNo, payload.letterDate || null, payload.postNo, payload.postDate || null, payload.title,
         sourceId, payload.product || null, payload.productLicense || null,
-        payload.bountyAmount != null && payload.bountyAmount !== "" ? Number(payload.bountyAmount) : null, payload.description || null,
+        payload.bountyAmount || null,
+        payload.bountyRequested ? 1 : 0, payload.bountyFirstName || null, payload.bountyLastName || null, payload.bountyNo || null,
+        payload.description || null,
         payload.complainant?.name || null, payload.complainant?.phone || null, payload.complainant?.email || null,
         payload.complainant?.address || null, payload.complainant?.anonymous ? 1 : 0, channelId,
         payload.respondent?.licensee || null, payload.respondent?.business || null, payload.respondent?.address || null,
-        payload.respondent?.licenseNo || null, districtId,
+        payload.respondent?.licenseNo || null, districtId, subdistrictId,
         id,
       ]
     );
@@ -757,12 +790,31 @@ async function updateCase(id, payload, user) {
     for (const name of payload.problems || []) { const pid = await idByName(conn, "problems", name); if (pid) await conn.query("INSERT IGNORE INTO case_problems (case_id, problem_id) VALUES (?, ?)", [id, pid]); }
     // attachments are managed via the dedicated upload/delete endpoints — do not touch here
 
-    if (wasReturned) {
-      await addTimeline(conn, id, { title: "แก้ไขและส่งขออนุมัติอีกครั้ง", user: user.name, kind: "create" });
-      // back in the approval queue → notify heads/admins
-      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคส ${payload.etracking} แก้ไขแล้ว ส่งขออนุมัติอีกครั้ง`, caseId: id });
+    // editing no longer resubmits — the creator resubmits explicitly via POST /cases/:id/submit
+    await addTimeline(conn, id, { title: "แก้ไขข้อมูลเคส", user: user.name, kind: "create" });
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  return getCaseById(id);
+}
+
+// Creator submits a case for head approval: a draft (is_draft 1 → 0) or a
+// returned case (returned 1 → 0). Heads/admins get notified either way.
+async function submitCase(id, user) {
+  const c = await assertActionable(id, ["01"]);
+  if (!c.isDraft && !c.returned) { const e = new Error("เคสนี้ถูกส่งขออนุมัติแล้ว"); e.status = 409; throw e; }
+  if (c.createdByUserId !== user.userId) { const e = new Error("ส่งขออนุมัติได้เฉพาะผู้สร้างเคสเท่านั้น"); e.status = 403; throw e; }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    if (c.isDraft) {
+      await conn.query("UPDATE cases SET is_draft = 0 WHERE id = ?", [id]);
+      await addTimeline(conn, id, { title: "ส่งขออนุมัติหัวหน้ากลุ่มงาน", user: user.name, kind: "create" });
+      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคสใหม่รออนุมัติ: ${c.title}`, caseId: id });
     } else {
-      await addTimeline(conn, id, { title: "แก้ไขข้อมูลเคส", user: user.name, kind: "create" });
+      // returned case fixed by its creator → back into the approval queue
+      await conn.query("UPDATE cases SET returned = 0, return_reason = NULL WHERE id = ?", [id]);
+      await addTimeline(conn, id, { title: "แก้ไขและส่งขออนุมัติอีกครั้ง", user: user.name, kind: "create" });
+      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคส ${c.etracking} แก้ไขแล้ว ส่งขออนุมัติอีกครั้ง`, caseId: id });
     }
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
@@ -772,6 +824,7 @@ async function updateCase(id, payload, user) {
 // Head/admin sends a pending case back to the officer to fix (stays status 01, flagged returned).
 async function returnCase(id, reason, user) {
   const c = await assertActionable(id, ["01"]);
+  if (c.isDraft) { const e = new Error("เคสยังเป็นร่าง — ยังไม่ได้ส่งขออนุมัติ จึงส่งกลับไม่ได้"); e.status = 409; throw e; }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -826,7 +879,7 @@ async function importCases(rows, user) {
         [
           id, etracking, r.letterNo || null, dateOrNull(r.letterDate), r.postNo || null, dateOrNull(r.postDate), title,
           sourceId, r.product || null, r.productLicense || null,
-          r.bountyAmount ? Number(r.bountyAmount) : null, r.description || null, status,
+          r.bountyAmount ? String(r.bountyAmount) : null, r.description || null, status,
           r.complainant_name || null, r.complainant_phone || null, r.complainant_email || null, channelId,
           r.respondent_licensee || null, r.respondent_business || null, districtId,
           user.roleId, user.userId ?? null, createdAt,
@@ -858,5 +911,5 @@ module.exports = {
   getCaseById, getAllCases, listCases, createCase, updateCase,
   assignCase, reassignCase, saveInvestigation, addInvestigationEvent, decision,
   saveBoard, applyBoardResolution, savePayment, closeFineCase,
-  cancelCase, unlockCase, returnCase, importCases,
+  cancelCase, unlockCase, returnCase, submitCase, importCases,
 };

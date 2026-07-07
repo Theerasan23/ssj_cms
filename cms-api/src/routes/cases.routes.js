@@ -41,6 +41,10 @@ router.get("/:id", async (req, res, next) => {
   try {
     const c = await cases.getCaseById(req.params.id);
     if (!c) return res.status(404).json({ error: "ไม่พบเคส" });
+    // drafts are private to their creator (admin may see them too)
+    if (c.isDraft && c.createdByUserId !== req.user.userId && req.user.roleId !== "admin") {
+      return res.status(404).json({ error: "ไม่พบเคส" });
+    }
     res.json(c);
   } catch (e) { next(e); }
 });
@@ -148,6 +152,13 @@ router.post("/:id/cancel", requireRole("head", "admin"), async (req, res, next) 
 router.post("/:id/unlock", requireRole("admin"), async (req, res, next) => {
   try {
     res.json(await cases.unlockCase(req.params.id, req.user.name));
+  } catch (e) { next(e); }
+});
+
+// POST /api/cases/:id/submit — creator submits a draft for head approval
+router.post("/:id/submit", requireRole("officer", "head", "admin"), async (req, res, next) => {
+  try {
+    res.json(await cases.submitCase(req.params.id, req.user));
   } catch (e) { next(e); }
 });
 

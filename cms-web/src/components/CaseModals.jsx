@@ -149,8 +149,8 @@ const LAW_COMMITTEES = {
   heal: ["คณะกรรมการกลั่นกรองฯ"],
 };
 
-export function committeesForCase(c, allCommittees) {
-  const allowed = new Set((c.laws || []).flatMap((l) => LAW_COMMITTEES[l] || []));
+export function committeesForLaws(laws, allCommittees) {
+  const allowed = new Set((laws || []).flatMap((l) => LAW_COMMITTEES[l] || []));
   const filtered = (allCommittees || []).filter((co) => allowed.has(co));
   // laws without a mapping (e.g. วัตถุอันตราย/ยาเสพติด) fall back to the full list
   return filtered.length ? filtered : allCommittees || [];
@@ -173,7 +173,9 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply }) {
   const meetings = c.boardMeetings || [];
   const latest = meetings.length ? meetings[meetings.length - 1] : null;
   const pending = latest && !latest.resolution ? latest : null;
-  const committeeOptions = committeesForCase(c, cms.MASTER.committees);
+  // laws under consideration: start from the case's laws, more can be added in the modal —
+  // they drive which committees and law sections are offered below
+  const [laws, setLaws] = useState(c.laws || []);
   const [committees, setCommittees] = useState(pending ? pending.committees : []);
   const [meetingNo, setMeetingNo] = useState(pending?.meetingNo || "");
   const [year, setYear] = useState(pending?.year || latest?.year || 2569);
@@ -185,8 +187,27 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply }) {
   const snapBoard = cms.caseSlaSnapshot(c).stageBoard;
   const boardDays = cms.MASTER.slaDays?.board ?? 60;
 
+  // both lists follow the laws selected above; laws without sections fall back to the full list
+  function sectionOptionsFor(selLaws) {
+    const filtered = cms.MASTER.sections.filter((sx) => selLaws.includes(sx.law));
+    return filtered.length ? filtered : cms.MASTER.sections;
+  }
+  const sectionOptions = sectionOptionsFor(laws);
+  // union with current selection so committees from a pending proposal stay visible
+  const committeeOptions = [...new Set([...committeesForLaws(laws, cms.MASTER.committees), ...committees])];
+
+  function changeLaws(v) {
+    setLaws(v);
+    // drop selections that no longer match the chosen laws
+    const allowedCom = new Set(committeesForLaws(v, cms.MASTER.committees));
+    setCommittees((cur) => cur.filter((x) => allowedCom.has(x)));
+    const allowedSec = new Set(sectionOptionsFor(v).map((s) => s.id));
+    setSections((cur) => cur.filter((s) => allowedSec.has(s.secId)));
+  }
+
   function addSection() {
-    const first = cms.MASTER.sections[0];
+    const first = sectionOptions[0];
+    if (!first) return;
     setSections([...sections, { secId: first.id, count: 1, fine: first.fines[0] }]);
   }
   function updateSection(i, k, v) {
@@ -279,7 +300,10 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply }) {
         <div className="form-section">
           <div className="section-head"><div className="section-num">+</div><div className="section-title">{pending ? "ลงมติการประชุมที่รออยู่ / แก้ไขการเสนอ" : "เพิ่มบันทึกการเข้าที่ประชุม"}</div></div>
           <div className="section-body stack">
-            <FormField label="คณะกรรมการ" req hint="แสดงเฉพาะคณะกรรมการตามพรบ. ของเคส · เลือกได้หลายคณะ">
+            <FormField label="พรบ. ที่ใช้พิจารณา" hint="เริ่มจากพรบ. ของเคส — เลือกเพิ่มได้ · คณะกรรมการและมาตราด้านล่างจะแสดงตามพรบ. ที่เลือก">
+              <ChipPicker options={cms.MASTER.laws.map((l) => ({ id: l.id, label: l.label }))} value={laws} onChange={changeLaws} />
+            </FormField>
+            <FormField label="คณะกรรมการ" req hint="แสดงเฉพาะคณะกรรมการตามพรบ. ที่เลือก · เลือกได้หลายคณะ">
               <ChipPicker options={committeeOptions.map((co) => ({ id: co, label: co }))} value={committees} onChange={setCommittees} />
             </FormField>
             <div className="form-grid cols-3">
@@ -306,7 +330,7 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply }) {
                   {sections.map((s, i) => (
                     <div key={i} className="row" style={{ gap: 8, padding: 10, border: "1px solid var(--border)", borderRadius: 8, flexWrap: "nowrap" }}>
                       <select className="select" style={{ flex: 1, minWidth: 120 }} value={s.secId} onChange={(e) => updateSection(i, "secId", e.target.value)}>
-                        {cms.MASTER.sections.map((sx) => <option key={sx.id} value={sx.id}>{sx.text}</option>)}
+                        {sectionOptions.map((sx) => <option key={sx.id} value={sx.id}>[{cms.lawLabel(sx.law)}] {sx.text}</option>)}
                       </select>
                       <input type="number" min="1" max="3" className="input" style={{ width: 70, flexShrink: 0 }} value={s.count} onChange={(e) => updateSection(i, "count", +e.target.value)} />
                       <input type="number" min="0" step="500" className="input mono" style={{ width: 130, flexShrink: 0, textAlign: "right", ...((+s.fine > 0) ? {} : { borderColor: "var(--error-700)" }) }}

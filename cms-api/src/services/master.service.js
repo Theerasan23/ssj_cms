@@ -84,6 +84,10 @@ async function getMaster() {
   const [committees] = await pool.query("SELECT name FROM committees WHERE active = 1 ORDER BY ord, id");
   const [resolutions] = await pool.query("SELECT name FROM resolutions WHERE active = 1 ORDER BY ord, id");
   const [districts] = await pool.query("SELECT name FROM districts WHERE active = 1 ORDER BY ord, id");
+  const [subdistricts] = await pool.query(
+    `SELECT sd.name, d.name AS district FROM subdistricts sd
+     JOIN districts d ON d.id = sd.district_id
+     WHERE sd.active = 1 ORDER BY sd.ord, sd.id`);
   const [laws] = await pool.query("SELECT id, label FROM laws WHERE active = 1 ORDER BY ord, id");
   const [officers] = await pool.query("SELECT id, name, phone, email FROM officers WHERE active = 1 ORDER BY ord, id");
   const [sections] = await pool.query("SELECT id, law_id, text, fine1, fine2, fine3 FROM law_sections ORDER BY ord, id");
@@ -103,6 +107,8 @@ async function getMaster() {
     committees: committees.map((r) => r.name),
     resolutions: resolutions.map((r) => r.name),
     districts: districts.map((r) => r.name),
+    // map อำเภอ → [ตำบล] for the cascading select on the case form
+    subdistricts: subdistricts.reduce((m, r) => { (m[r.district] ||= []).push(r.name); return m; }, {}),
     sections: sections.map((r) => ({ id: r.id, law: r.law_id, text: r.text, fines: [r.fine1, r.fine2, r.fine3] })),
     statuses: statusMap,
     roles: roles.map((r) => ({ id: r.id, name: r.name, role: r.role_label, initials: r.initials, desc: r.descr })),

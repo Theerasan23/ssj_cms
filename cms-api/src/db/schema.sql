@@ -92,6 +92,16 @@ CREATE TABLE districts (
   active TINYINT(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE subdistricts (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  district_id INT NOT NULL,
+  name        VARCHAR(128) NOT NULL,
+  ord         INT NOT NULL DEFAULT 0,
+  active      TINYINT(1) NOT NULL DEFAULT 1,
+  UNIQUE KEY uq_subdistrict (district_id, name),
+  CONSTRAINT fk_subdistrict_district FOREIGN KEY (district_id) REFERENCES districts(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE laws (
   id     VARCHAR(16)  PRIMARY KEY,
   label  VARCHAR(128) NOT NULL,
@@ -159,7 +169,11 @@ CREATE TABLE cases (
   source_id            INT,
   product              VARCHAR(191),
   product_license      VARCHAR(128),
-  bounty_amount        DECIMAL(12,2),
+  bounty_amount        VARCHAR(191),
+  bounty_requested     TINYINT(1) NOT NULL DEFAULT 0,
+  bounty_first_name    VARCHAR(128),
+  bounty_last_name     VARCHAR(128),
+  bounty_no            VARCHAR(128),
   description          TEXT,
   status_code          VARCHAR(2) NOT NULL DEFAULT '01',
 
@@ -175,6 +189,7 @@ CREATE TABLE cases (
   respondent_address   VARCHAR(255),
   respondent_license_no VARCHAR(128),
   respondent_district_id INT,
+  respondent_subdistrict_id INT,
 
   inv_site_visit_date  DATE,
   inv_site_place       VARCHAR(191),
@@ -194,6 +209,7 @@ CREATE TABLE cases (
   cancel_reason        VARCHAR(255),
   returned             TINYINT(1) NOT NULL DEFAULT 0,
   return_reason        VARCHAR(255),
+  is_draft             TINYINT(1) NOT NULL DEFAULT 0,
 
   created_by           VARCHAR(16),
   created_by_user_id   INT,
@@ -208,6 +224,7 @@ CREATE TABLE cases (
   CONSTRAINT fk_case_source   FOREIGN KEY (source_id) REFERENCES sources(id),
   CONSTRAINT fk_case_channel  FOREIGN KEY (complainant_channel_id) REFERENCES channels(id),
   CONSTRAINT fk_case_district FOREIGN KEY (respondent_district_id) REFERENCES districts(id),
+  CONSTRAINT fk_case_subdistrict FOREIGN KEY (respondent_subdistrict_id) REFERENCES subdistricts(id),
   CONSTRAINT fk_case_created  FOREIGN KEY (created_by) REFERENCES roles(id),
   CONSTRAINT fk_case_creator_user FOREIGN KEY (created_by_user_id) REFERENCES users(id),
   CONSTRAINT fk_case_assigned FOREIGN KEY (assigned_by) REFERENCES roles(id)

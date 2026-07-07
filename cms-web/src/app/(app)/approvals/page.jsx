@@ -40,7 +40,8 @@ export default function ApprovalsPage() {
 
   if (loading) return <main className="page"><div className="muted">กำลังโหลด…</div></main>;
 
-  const submittedByOfficer = cases.filter((c) => c.createdBy === "officer");
+  // every submitted (non-draft) case goes through the approval queue, whoever created it
+  const submittedByOfficer = cases.filter((c) => !c.isDraft);
   const pending = submittedByOfficer.filter((c) => c.status === "01" && !c.returned);
   const pendingLive = pending.filter((c) => !cms.isCaseLocked(c));
   const pendingLocked = pending.filter((c) => cms.isCaseLocked(c));

@@ -26,7 +26,8 @@ function HeadDashboard({ cases, reload }) {
   const [period, setPeriod] = useState("30");
   const [quickAssignFor, setQuickAssignFor] = useState(null);
 
-  const submittedByOfficer = cases.filter((c) => c.createdBy === "officer");
+  // every submitted (non-draft) case goes through the approval queue, whoever created it
+  const submittedByOfficer = cases.filter((c) => !c.isDraft);
   const queue = submittedByOfficer.filter((c) => c.status === "01" && !c.returned);
   const queueLive = queue.filter((c) => !cms.isCaseLocked(c));
 

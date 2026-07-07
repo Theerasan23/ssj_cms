@@ -26,7 +26,7 @@ function CaseList() {
   const [statusFilter, setStatusFilter] = useState([]);
   const [lawFilter, setLawFilter] = useState([]);
   const [slaFilter, setSlaFilter] = useState("");
-  const [scope, setScope] = useState("all");
+  const [scope, setScope] = useState(searchParams.get("scope") === "mine" ? "mine" : "all");
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(1);
   const pageSize = 20;
@@ -148,6 +148,7 @@ function CaseList() {
                           <div className="row" style={{ gap: 6, alignItems: "center" }}>
                             {locked && <span className="lock-pill" title="เคสล็อก เกิน SLA"><Icon name="lock" size={10} /></span>}
                             {c.returned && <span className="lock-pill" style={{ background: "var(--warning-700)" }} title="ถูกส่งกลับให้แก้ไข"><Icon name="arrow-left" size={10} /></span>}
+                            {c.isDraft && <span className="lock-pill" style={{ background: "var(--text-soft)" }} title="ร่าง — ยังไม่ส่งขออนุมัติ"><Icon name="edit" size={10} /> ร่าง</span>}
                             {c.etracking}
                           </div>
                         </td>

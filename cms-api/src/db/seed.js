@@ -56,6 +56,7 @@ const MASTER = {
     "เปรียบเทียบปรับ", "ยุติเรื่อง", "ดำเนินคดี (ส่งตำรวจ)", "ส่งอัยการ", "ออกคำสั่งปรับพินัย",
   ],
   districts: ["เมืองนนทบุรี", "บางกรวย", "บางใหญ่", "บางบัวทอง", "ไทรน้อย", "ปากเกร็ด"],
+  // (subdistricts are seeded from SUBDISTRICTS below)
   sections: [
     { id: "sec-25", law: "drug", text: "มาตรา 25(3) ผลิต/ขายยาแผนปัจจุบันโดยไม่ได้รับอนุญาต", fines: [20000, 40000, 60000] },
     { id: "sec-72", law: "food", text: "มาตรา 6(7) ฉลากอาหารไม่ถูกต้อง", fines: [10000, 20000, 30000] },
@@ -70,6 +71,16 @@ const MASTER = {
     { id: "officer", name: "นางณัฐสิรี เปี้ยปลูก",  role: "พนักงานเจ้าหน้าที่",     initials: "ณป", desc: "Officer", officer: "off-3", username: "natsiri.p" },
     { id: "exec",    name: "นพ.สมชาย วงศ์ไพศาล",    role: "ผู้บริหาร / นพ.สสจ.",     initials: "สว", desc: "Nayok / View only", officer: null, username: "drsomchai.w" },
   ],
+};
+
+// ตำบลจริงของ จ.นนทบุรี (52 ตำบล) — key = ชื่ออำเภอใน MASTER.districts
+const SUBDISTRICTS = {
+  "เมืองนนทบุรี": ["สวนใหญ่", "ตลาดขวัญ", "บางเขน", "บางกระสอ", "ท่าทราย", "บางไผ่", "บางศรีเมือง", "บางกร่าง", "ไทรม้า", "บางรักน้อย"],
+  "บางกรวย": ["วัดชลอ", "บางกรวย", "บางสีทอง", "บางขนุน", "บางขุนกอง", "บางคูเวียง", "มหาสวัสดิ์", "ปลายบาง", "ศาลากลาง"],
+  "บางใหญ่": ["บางม่วง", "บางแม่นาง", "บางเลน", "เสาธงหิน", "บ้านใหม่", "บางใหญ่"],
+  "บางบัวทอง": ["โสนลอย", "บางบัวทอง", "บางรักใหญ่", "บางคูรัด", "ละหาร", "ลำโพ", "พิมลราช", "บางรักพัฒนา"],
+  "ไทรน้อย": ["ไทรน้อย", "ราษฎร์นิยม", "หนองเพรางาย", "ไทรใหญ่", "ขุนศรี", "คลองขวาง", "ทวีวัฒนา"],
+  "ปากเกร็ด": ["ปากเกร็ด", "บางตลาด", "บ้านใหม่", "บางพูด", "บางตะไนย์", "คลองพระอุดม", "ท่าอิฐ", "เกาะเกร็ด", "อ้อมเกร็ด", "คลองข่อย", "บางพลับ", "คลองเกลือ"],
 };
 
 const STATUS = {
@@ -368,6 +379,14 @@ async function main() {
     const committeeMap = await seedListReturningMap(conn, "committees", MASTER.committees);
     await seedListReturningMap(conn, "resolutions", MASTER.resolutions);
     const districtMap = await seedListReturningMap(conn, "districts", MASTER.districts);
+    // subdistricts (ตำบลจริงของ จ.นนทบุรี) keyed by district
+    for (const [dname, names] of Object.entries(SUBDISTRICTS)) {
+      const did = districtMap[dname];
+      if (did == null) continue;
+      for (let i = 0; i < names.length; i++) {
+        await conn.query("INSERT IGNORE INTO subdistricts (district_id, name, ord) VALUES (?, ?, ?)", [did, names[i], i + 1]);
+      }
+    }
 
     // laws (explicit ids)
     for (let i = 0; i < MASTER.laws.length; i++) {
