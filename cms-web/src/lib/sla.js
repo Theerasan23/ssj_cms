@@ -41,21 +41,25 @@ export function computeSlaStage(anchorIso, slaDays, targetIso, todayIso) {
 
 export function caseSlaSnapshot(c) {
   const t = TODAY();
-  const stageAssign = computeSlaStage(c.postDate, SLA_DAYS.assign, c.assignedAt, t);
+  // head-granted extension widens every stage window of this case — including
+  // already-completed stages, so a stage finished late-but-within-extension
+  // doesn't keep the case locked forever (keep in sync with cms-api sla.service.js)
+  const ext = Number(c.slaExtensionDays) || 0;
+  const stageAssign = computeSlaStage(c.postDate, SLA_DAYS.assign + ext, c.assignedAt, t);
   const investTarget = c.investigation && (c.investigation.siteVisitDate || c.investigation.meetingDate)
     ? minDate(c.investigation.siteVisitDate, c.investigation.meetingDate) : null;
-  const stageInvest = computeSlaStage(c.assignedAt, SLA_DAYS.invest, investTarget, t);
+  const stageInvest = computeSlaStage(c.assignedAt, SLA_DAYS.invest + ext, investTarget, t);
   const boardTarget = c.board && c.board.meetingDate ? c.board.meetingDate : null;
-  const stageBoard = computeSlaStage(c.assignedAt, SLA_DAYS.board, boardTarget, t);
+  const stageBoard = computeSlaStage(c.assignedAt, SLA_DAYS.board + ext, boardTarget, t);
   const fineTarget = c.fines && c.fines.length > 0
     ? (c.fines.every((f) => f.paid) ? maxDate(...c.fines.map((f) => f.paidDate)) : null) : null;
   const fineAnchor = c.board && c.board.meetingDate ? c.board.meetingDate : null;
-  const stageFine = computeSlaStage(fineAnchor, SLA_DAYS.fine, fineTarget, t);
+  const stageFine = computeSlaStage(fineAnchor, SLA_DAYS.fine + ext, fineTarget, t);
   return { stageAssign, stageInvest, stageBoard, stageFine };
 }
 
 export function isCaseLocked(c) {
-  if (c.lockOverridden) return false; // admin/head extended the deadline
+  if (c.lockOverridden) return false; // admin permanently lifted the lock
   if (CLOSED.includes(c.status)) return false;
   const sla = caseSlaSnapshot(c);
   const order = ["stageAssign", "stageInvest", "stageBoard", "stageFine"];
@@ -69,11 +73,13 @@ export function isCaseLocked(c) {
 export function lockReason(c) {
   if (!isCaseLocked(c)) return null;
   const s = caseSlaSnapshot(c);
+  const ext = Number(c.slaExtensionDays) || 0;
+  const suffix = ext > 0 ? `+${ext}` : "";
   const labels = {
-    stageAssign: `ขั้นมอบหมาย (${SLA_DAYS.assign} วัน)`,
-    stageInvest: `ขั้นตรวจสอบข้อเท็จจริง (${SLA_DAYS.invest} วัน)`,
-    stageBoard: `ขั้นเข้าคณะกรรมการ (${SLA_DAYS.board} วัน)`,
-    stageFine: `ขั้นชำระค่าปรับ (${SLA_DAYS.fine} วัน)`,
+    stageAssign: `ขั้นมอบหมาย (${SLA_DAYS.assign}${suffix} วัน)`,
+    stageInvest: `ขั้นตรวจสอบข้อเท็จจริง (${SLA_DAYS.invest}${suffix} วัน)`,
+    stageBoard: `ขั้นเข้าคณะกรรมการ (${SLA_DAYS.board}${suffix} วัน)`,
+    stageFine: `ขั้นชำระค่าปรับ (${SLA_DAYS.fine}${suffix} วัน)`,
   };
   for (const k of ["stageAssign", "stageInvest", "stageBoard", "stageFine"]) {
     if (s[k] && s[k].kind === "overdue") return { stage: labels[k], detail: s[k].label };

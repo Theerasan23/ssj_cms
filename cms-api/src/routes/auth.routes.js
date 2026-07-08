@@ -11,8 +11,8 @@ const router = express.Router();
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: "พยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่" });
 
 const USER_SELECT = `
-  SELECT u.id, u.username, u.role_id, u.name, u.initials, u.email, u.phone, u.officer_id, u.active,
-         r.name AS role_name, r.role_label, r.initials AS role_initials, r.descr, r.officer_id AS role_officer_id
+  SELECT u.id, u.username, u.role_id, u.name, u.initials, u.email, u.phone, u.active,
+         r.name AS role_name, r.role_label, r.initials AS role_initials, r.descr
   FROM users u JOIN roles r ON r.id = u.role_id
 `;
 
@@ -24,7 +24,6 @@ function mapUser(u) {
     role: u.role_label,
     initials: u.initials || u.role_initials,
     desc: u.descr,
-    officerId: u.officer_id || u.role_officer_id,
     username: u.username,
     email: u.email || "",
     phone: u.phone || "",

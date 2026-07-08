@@ -11,7 +11,6 @@ const ENTITIES = {
   resolutions: { table: "resolutions",  idCol: "id", idAuto: true,  fields: ["name"],                                            required: ["name"] },
   districts:   { table: "districts",    idCol: "id", idAuto: true,  fields: ["name"],                                            required: ["name"] },
   laws:        { table: "laws",         idCol: "id", idAuto: false, fields: ["id", "label"],                                     required: ["id", "label"] },
-  officers:    { table: "officers",     idCol: "id", idAuto: false, fields: ["id", "name", "phone", "email"],                    required: ["id", "name"] },
   sections:    { table: "law_sections", idCol: "id", idAuto: false, fields: ["id", "law_id", "text", "fine1", "fine2", "fine3"], required: ["id", "law_id", "text"] },
 };
 
@@ -38,6 +37,8 @@ async function listEntity(entity) {
 
 async function createItem(entity, body) {
   const cfg = entityOr400(entity);
+  // sections: id is technical — generate one when the admin leaves it blank (พรบ.-first form)
+  if (entity === "sections" && !body.id) body.id = "sec-" + Date.now().toString(36);
   for (const r of cfg.required) {
     if (body[r] === undefined || body[r] === null || body[r] === "") { const e = new Error(`กรุณากรอกข้อมูลให้ครบ (${r})`); e.status = 400; throw e; }
   }
@@ -89,7 +90,10 @@ async function getMaster() {
      JOIN districts d ON d.id = sd.district_id
      WHERE sd.active = 1 ORDER BY sd.ord, sd.id`);
   const [laws] = await pool.query("SELECT id, label FROM laws WHERE active = 1 ORDER BY ord, id");
-  const [officers] = await pool.query("SELECT id, name, phone, email FROM officers WHERE active = 1 ORDER BY ord, id");
+  // "officers" = assignable staff — active user accounts with role เจ้าหน้าที่ดำเนินการ,
+  // so every assignee can log in and continue the workflow
+  const [officers] = await pool.query(
+    "SELECT id, name, phone, email FROM users WHERE role_id = 'officer' AND active = 1 ORDER BY name");
   const [sections] = await pool.query("SELECT id, law_id, text, fine1, fine2, fine3 FROM law_sections ORDER BY ord, id");
   const [statuses] = await pool.query("SELECT code, label, css_class FROM statuses ORDER BY ord, code");
   const [roles] = await pool.query("SELECT id, name, role_label, initials, descr FROM roles ORDER BY ord, id");

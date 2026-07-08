@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { StatusBadge, SLABadge, Avatar, Tabs, DataCard, FormField, SLATimelineHorizontal, Modal } from "@/components/ui";
-import { AssignModal, InvestigationModal, BoardModal, FineModal, FollowupModal, fmtTimestamp } from "@/components/CaseModals";
+import { AssignModal, InvestigationModal, BoardModal, FineModal, FollowupModal, ExtendSlaModal, fmtTimestamp } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
 
@@ -48,14 +48,22 @@ export default function CaseDetailPage() {
   }
 
   const canAssign = ["head", "admin"].includes(role.id);
-  // workflow saves (ตรวจสอบ/มติ/ชำระ/ติดตาม/ไฟล์แนบ) — head, admin, or the case creator only
-  const canEdit = canAssign || c.createdByUserId === role.userId;
+  const isAssignee = c.assignees.includes(role.userId);
+  const isCreator = c.createdByUserId === role.userId;
+  // ขั้นตอน workflow หลังมอบหมาย — หัวหน้า/แอดมิน หรือเจ้าหน้าที่ดำเนินการที่ได้รับมอบหมาย
+  const canWork = canAssign || isAssignee;
+  // ขั้นชำระค่าปรับ (04) — เพิ่มเจ้าหน้าที่ค่าปรับ (role fine) เข้ามาทำงานส่วนนี้โดยเฉพาะ
+  const canFine = canWork || role.id === "fine";
+  // จัดการไฟล์แนบ/แก้ข้อมูล — ผู้สร้าง (พัสดุ) ทำได้เฉพาะตอนยังรอมอบหมาย
+  const canEdit = canWork || (isCreator && c.status === "01") || (role.id === "fine" && c.status === "04");
   const closedCase = c.closed;
   const sla = cms.caseSla(c);
   const locked = cms.isCaseLocked(c);
   const lock = cms.lockReason(c);
   const canEditCase = c.status === "01" && !locked && c.createdByUserId === role.userId;
   const canUnlock = role.id === "admin";
+  // หัวหน้า (และแอดมิน) ขยายกำหนด SLA ได้โดยระบุจำนวนวัน
+  const canExtend = ["head", "admin"].includes(role.id);
 
   function guardLocked() {
     if (locked) {
@@ -78,7 +86,7 @@ export default function CaseDetailPage() {
     }
   }
 
-  const saveAssignment = (officerIds, note) => { if (guardLocked()) return; run(() => api.post(`/cases/${c.id}/assign`, { officerIds, note }), "มอบหมายสำเร็จ", "เจ้าหน้าที่ได้รับ notification แล้ว"); };
+  const saveAssignment = (assigneeIds, note) => { if (guardLocked()) return; run(() => api.post(`/cases/${c.id}/assign`, { assigneeIds, note }), "มอบหมายสำเร็จ", "เจ้าหน้าที่ได้รับ notification และเข้าสู่ระบบเพื่อดำเนินการต่อได้"); };
   async function addInvestEvent(payload) {
     if (guardLocked()) return;
     try {
@@ -180,6 +188,7 @@ export default function CaseDetailPage() {
     }
   }
   const doUnlock = () => run(() => api.post(`/cases/${c.id}/unlock`, {}), "ปลดล็อกเคสแล้ว", "ดำเนินการต่อได้ตามปกติ");
+  const doExtend = (days, reason) => run(() => api.post(`/cases/${c.id}/extend`, { days, reason }), "ขยายกำหนด SLA แล้ว", `เพิ่ม ${days} วัน — เวลายังนับต่อ`);
   const doCancel = () => run(() => api.post(`/cases/${c.id}/cancel`, { reason: cancelReason }), "ยกเลิกเคสแล้ว");
   const doReturn = () => { if (!returnReason.trim()) { toast.push({ kind: "warn", title: "กรุณาระบุเหตุผล" }); return; } run(() => api.post(`/cases/${c.id}/return`, { reason: returnReason }), "ส่งกลับให้เจ้าหน้าที่แล้ว", "เจ้าหน้าที่จะแก้ไขและส่งใหม่"); };
   // draft or returned case → submit for head approval, then jump to "เคสของฉัน"
@@ -207,17 +216,18 @@ export default function CaseDetailPage() {
     if (closedCase || locked) return null;
     if (c.status === "01" && c.isDraft) return { label: "ส่งขออนุมัติหัวหน้า", icon: "send", onClick: doSubmitDraft, disabled: c.createdByUserId !== role.userId };
     if (c.status === "01" && c.returned && c.createdByUserId === role.userId) return { label: "ส่งขออนุมัติอีกครั้ง", icon: "send", onClick: doSubmitDraft };
-    if (c.status === "01") return { label: "มอบหมายเจ้าหน้าที่", icon: "users", onClick: () => setModal("assign"), disabled: !canAssign };
-    if (c.status === "02") return { label: "บันทึกการตรวจสอบ", icon: "loupe", onClick: () => setModal("invest"), disabled: !canEdit };
-    if (c.status === "03") return { label: "บันทึกมติคณะกรรมการ", icon: "users", onClick: () => setModal("board"), disabled: !canEdit };
+    if (c.status === "01") return { label: "มอบหมายเจ้าหน้าที่", icon: "users", onClick: () => setModal("assign"), disabled: !canAssign, hint: "* เฉพาะหัวหน้ากลุ่มงาน/Admin" };
+    if (c.status === "02") return { label: "บันทึกการตรวจสอบ", icon: "loupe", onClick: () => setModal("invest"), disabled: !canWork };
+    if (c.status === "03") return { label: "บันทึกมติคณะกรรมการ", icon: "users", onClick: () => setModal("board"), disabled: !canWork };
     if (c.status === "04") {
-      if (allFinesPaid) return { label: "ปิดเคส (ชำระค่าปรับครบ)", icon: "check-circle", onClick: doCloseFine, disabled: !canEdit };
-      return { label: "บันทึกการชำระ", icon: "money", onClick: () => setModal("fine"), disabled: !canEdit };
+      const fineHint = "* เฉพาะเจ้าหน้าที่ค่าปรับ ผู้รับมอบหมาย หรือหัวหน้า/Admin";
+      if (allFinesPaid) return { label: "ปิดเคส (ชำระค่าปรับครบ)", icon: "check-circle", onClick: doCloseFine, disabled: !canFine, hint: fineHint };
+      return { label: "บันทึกการชำระ", icon: "money", onClick: () => setModal("fine"), disabled: !canFine, hint: fineHint };
     }
     // follow-up statuses — keep recording progress until the case is explicitly closed
-    if (c.status === "06") return { label: "บันทึกการส่งต่อหน่วยงาน", icon: "send", onClick: () => setModal("followup"), disabled: !canEdit };
-    if (c.status === "07") return { label: "บันทึกการแจ้งความ/ดำเนินคดี", icon: "gavel", onClick: () => setModal("followup"), disabled: !canEdit };
-    if (c.status === "09") return { label: "บันทึกการเสนอนายแพทย์", icon: "edit", onClick: () => setModal("followup"), disabled: !canEdit };
+    if (c.status === "06") return { label: "บันทึกการส่งต่อหน่วยงาน", icon: "send", onClick: () => setModal("followup"), disabled: !canWork };
+    if (c.status === "07") return { label: "บันทึกการแจ้งความ/ดำเนินคดี", icon: "gavel", onClick: () => setModal("followup"), disabled: !canWork };
+    if (c.status === "09") return { label: "บันทึกการเสนอนายแพทย์", icon: "edit", onClick: () => setModal("followup"), disabled: !canWork };
     return null;
   })();
 
@@ -247,6 +257,10 @@ export default function CaseDetailPage() {
           )}</div>
           <div className="k">วันลงรับ POST</div><div className="v">{cms.fmtThaiDate(c.postDate)}</div>
           <div className="k">วันที่หนังสือ</div><div className="v">{cms.fmtThaiDate(c.letterDate)}</div>
+          {c.slaExtensionDays > 0 && (<>
+            <div className="k">ขยายกำหนด SLA</div>
+            <div className="v"><span className="chip accent" style={{ fontWeight: 600 }}>+{c.slaExtensionDays} วัน</span></div>
+          </>)}
         </div>
 
         {waitingBoard && (
@@ -264,7 +278,7 @@ export default function CaseDetailPage() {
             {!primaryAction.disabled && <Icon name="arrow-right" size={14} />}
           </button>
         )}
-        {primaryAction && primaryAction.disabled && <div className="small muted" style={{ textAlign: "center", marginTop: 8 }}>* เฉพาะหัวหน้ากลุ่มงาน/Admin</div>}
+        {primaryAction && primaryAction.disabled && <div className="small muted" style={{ textAlign: "center", marginTop: 8 }}>{primaryAction.hint || "* เฉพาะเจ้าหน้าที่ที่ได้รับมอบหมาย หรือหัวหน้า/Admin"}</div>}
         {locked && !closedCase && (
           <div style={{ background: "var(--error-100)", color: "var(--error-700)", padding: "12px 14px", borderRadius: 8, marginTop: 16, display: "flex", alignItems: "center", gap: 10, fontSize: 13, fontWeight: 600, border: "1px dashed var(--error-700)" }}>
             <Icon name="lock" size={16} />
@@ -452,7 +466,7 @@ export default function CaseDetailPage() {
             </tbody>
           </table>
           {allFinesPaid && !closedCase && c.status === "04" && (
-            <button className="btn btn-success btn-block" style={{ marginTop: 12 }} onClick={doCloseFine} disabled={locked}>
+            <button className="btn btn-success btn-block" style={{ marginTop: 12 }} onClick={doCloseFine} disabled={locked || !canFine}>
               <Icon name="check-circle" size={16} /> ปิดเคส (ยุติคดี — ชำระค่าปรับครบ)
             </button>
           )}
@@ -555,13 +569,22 @@ export default function CaseDetailPage() {
           <div className="lock-ic"><Icon name="lock" size={20} /></div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="lock-title">เคสนี้ถูกล็อก — เกินกำหนด SLA</div>
-            <div className="lock-body">ตามนโยบาย: timeline เกินกำหนดแล้ว <b>ทุกเงื่อนไข</b> — ไม่สามารถแก้ไขข้อมูล หรืออัปเดตสถานะของเคสได้ จนกว่าผู้ดูแลระบบจะปลดล็อกหรือขยายกำหนด</div>
+            <div className="lock-body">ตามนโยบาย: timeline เกินกำหนดแล้ว <b>ทุกเงื่อนไข</b> — ไม่สามารถแก้ไขข้อมูล หรืออัปเดตสถานะของเคสได้ จนกว่าหัวหน้ากลุ่มงานจะขยายกำหนด (ระบุจำนวนวัน) หรือผู้ดูแลระบบปลดล็อก</div>
             {lock && <span className="lock-stage"><Icon name="clock" size={11} /> {lock.stage} · {lock.detail}</span>}
           </div>
-          {canUnlock && (
-            <button className="btn btn-sm" style={{ alignSelf: "center", background: "var(--error-700)", color: "#fff", borderColor: "var(--error-700)", whiteSpace: "nowrap" }} onClick={doUnlock}>
-              <Icon name="lock-open" size={14} /> ปลดล็อก / ขยายกำหนด
-            </button>
+          {(canExtend || canUnlock) && (
+            <div className="row" style={{ alignSelf: "center", gap: 6, flexWrap: "nowrap" }}>
+              {canExtend && (
+                <button className="btn btn-sm" style={{ background: "var(--warning-700)", color: "#fff", borderColor: "var(--warning-700)", whiteSpace: "nowrap" }} onClick={() => setModal("extend")}>
+                  <Icon name="clock" size={14} /> ขยายกำหนด (+วัน)
+                </button>
+              )}
+              {canUnlock && (
+                <button className="btn btn-sm" style={{ background: "var(--error-700)", color: "#fff", borderColor: "var(--error-700)", whiteSpace: "nowrap" }} onClick={doUnlock}>
+                  <Icon name="lock-open" size={14} /> ปลดล็อกถาวร
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -609,6 +632,7 @@ export default function CaseDetailPage() {
       </div>
 
       {modal === "assign" && <AssignModal c={c} onClose={() => setModal(null)} onSave={saveAssignment} />}
+      {modal === "extend" && <ExtendSlaModal c={c} onClose={() => setModal(null)} onSave={doExtend} />}
       {modal === "invest" && <InvestigationModal c={c} onClose={() => setModal(null)} onAddEvent={addInvestEvent} onChoose={selectInvestPath} />}
       {modal === "board" && <BoardModal c={c} onClose={() => setModal(null)} onSaveMeeting={saveBoardMeeting} onApply={applyBoard} />}
       {modal === "fine" && <FineModal c={c} onClose={() => setModal(null)} onSave={savePayment} onCloseCase={doCloseFine} />}

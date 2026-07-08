@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { StatusBadge, SLABadge, AvatarStack, Tabs, Modal, FormField } from "@/components/ui";
-import { AssignModal } from "@/components/CaseModals";
+import { AssignModal, ExtendSlaModal } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
 import { api } from "@/lib/api";
@@ -20,6 +20,7 @@ export default function ApprovalsPage() {
   const [reassignFor, setReassignFor] = useState(null);
   const [returnFor, setReturnFor] = useState(null);
   const [returnReason, setReturnReason] = useState("");
+  const [extendFor, setExtendFor] = useState(null);
 
   // Only the group head (and admin) may approve & assign.
   if (!["head", "admin"].includes(role.id)) {
@@ -65,13 +66,26 @@ export default function ApprovalsPage() {
   async function doReassign(ids, note) {
     const c = cases.find((x) => x.id === reassignFor);
     try {
-      await api.post(`/cases/${c.id}/reassign`, { officerIds: ids, note });
+      await api.post(`/cases/${c.id}/reassign`, { assigneeIds: ids, note });
       setReassignFor(null);
       toast.push({ kind: "success", title: "เปลี่ยนเจ้าหน้าที่สำเร็จ", msg: "ผู้รับผิดชอบชุดใหม่ได้รับ notification แล้ว" });
       reload();
       actions.reloadNotifications?.();
     } catch (e) {
       setReassignFor(null);
+      toast.push({ kind: "danger", title: "ทำรายการไม่สำเร็จ", msg: e.message });
+    }
+  }
+
+  // หัวหน้าขยายกำหนด SLA ของเคสที่ล็อก — เคสจะกลับเข้าคิวรออนุมัติพร้อมเวลาที่เหลือใหม่
+  async function doExtend(days, reason) {
+    const c = cases.find((x) => x.id === extendFor);
+    try {
+      await api.post(`/cases/${c.id}/extend`, { days, reason });
+      setExtendFor(null);
+      toast.push({ kind: "success", title: "ขยายกำหนด SLA แล้ว", msg: `เพิ่ม ${days} วัน — เคสกลับมาดำเนินการได้` });
+      reload(); actions.reloadNotifications?.();
+    } catch (e) {
       toast.push({ kind: "danger", title: "ทำรายการไม่สำเร็จ", msg: e.message });
     }
   }
@@ -84,7 +98,7 @@ export default function ApprovalsPage() {
       return;
     }
     try {
-      await api.post(`/cases/${c.id}/assign`, { officerIds: ids, note });
+      await api.post(`/cases/${c.id}/assign`, { assigneeIds: ids, note });
       setAssignFor(null);
       toast.push({ kind: "success", title: "อนุมัติและมอบหมายสำเร็จ", msg: "เจ้าหน้าที่ได้รับ notification แล้ว" });
       reload();
@@ -280,7 +294,9 @@ export default function ApprovalsPage() {
                     <div className="row" style={{ gap: 6 }}>
                       <button className="btn btn-ghost btn-sm" onClick={() => router.push(`/cases/${c.id}`)}><Icon name="eye" size={14} /> ดูรายละเอียด</button>
                     </div>
-                    <button className="btn btn-outline btn-sm" disabled style={{ opacity: 0.6 }}><Icon name="lock" size={14} /> ล็อก</button>
+                    <button className="btn btn-accent btn-sm" onClick={() => setExtendFor(c.id)}>
+                      <Icon name="clock" size={14} /> ขยายกำหนด (+วัน)
+                    </button>
                   </div>
                 </div>
               );
@@ -290,6 +306,7 @@ export default function ApprovalsPage() {
       </div>
 
       {assignFor && <AssignModal c={cases.find((x) => x.id === assignFor)} onClose={() => setAssignFor(null)} onSave={doAssign} />}
+      {extendFor && <ExtendSlaModal c={cases.find((x) => x.id === extendFor)} onClose={() => setExtendFor(null)} onSave={doExtend} />}
       {reassignFor && <AssignModal mode="reassign" c={cases.find((x) => x.id === reassignFor)} onClose={() => setReassignFor(null)} onSave={doReassign} />}
       {returnFor && (
         <Modal open onClose={() => setReturnFor(null)} title="ส่งกลับให้เจ้าหน้าที่แก้ไข" sub={(cases.find((x) => x.id === returnFor) || {}).etracking}

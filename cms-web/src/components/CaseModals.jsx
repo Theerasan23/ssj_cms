@@ -29,12 +29,56 @@ export function AssignModal({ c, onClose, onSave, mode = "assign" }) {
             <strong>SLA:</strong> ต้องมอบหมายภายใน 3 วันจากวันที่ลงรับ POST ({cms.fmtThaiDate(c.postDate)})
           </div>
         )}
-        <FormField label="เลือกเจ้าหน้าที่ผู้รับผิดชอบ" req>
+        <FormField label="เลือกเจ้าหน้าที่ดำเนินการ" req>
           <ChipPicker options={cms.MASTER.officers.map((o) => ({ id: o.id, label: o.name }))} value={selected} onChange={setSelected} />
-          <span className="hint">เลือกได้มากกว่า 1 คน · ทุกคนจะได้รับ notification</span>
+          <span className="hint">แสดงเฉพาะบัญชีบทบาท "เจ้าหน้าที่ดำเนินการ" ที่เปิดใช้งาน · เลือกได้มากกว่า 1 คน — ผู้ถูกเลือกจะได้รับ notification และเข้าสู่ระบบเพื่อดำเนินการขั้นถัดไป</span>
         </FormField>
         <FormField label="หมายเหตุ">
           <textarea className="textarea" rows={3} placeholder={reassign ? "เหตุผลการเปลี่ยนเจ้าหน้าที่ (ถ้ามี)" : "ข้อความถึงผู้รับมอบหมาย (ถ้ามี)"} value={note} onChange={(e) => setNote(e.target.value)} />
+        </FormField>
+      </div>
+    </Modal>
+  );
+}
+
+// ---------- SLA extension (head/admin) ----------
+// หัวหน้าขยายกรอบเวลา SLA ของเคสที่เกินกำหนด/ถูกล็อก โดยระบุจำนวนวัน (สะสมได้) —
+// ต่างจาก "ปลดล็อก" ของแอดมินซึ่งยกเลิกการล็อกถาวร: ขยายแล้วเวลายังเดินต่อ
+export function ExtendSlaModal({ c, onClose, onSave }) {
+  const { cms } = useApp();
+  const [days, setDays] = useState("");
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const n = Number(days);
+  const valid = Number.isInteger(n) && n >= 1 && n <= 365;
+  const lock = cms.lockReason(c);
+
+  async function save() {
+    if (!valid || saving) return;
+    setSaving(true);
+    try { await onSave(n, reason.trim()); } finally { setSaving(false); }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="ขยายกำหนด SLA" sub={c.etracking + " · " + c.title}
+      footer={<>
+        <button className="btn btn-outline" onClick={onClose}>ยกเลิก</button>
+        <button className="btn btn-primary" disabled={!valid || saving} onClick={save}>
+          <Icon name="clock" size={14} /> ขยายกำหนด {valid ? `+${n} วัน` : ""}
+        </button>
+      </>}>
+      <div className="stack">
+        <div style={{ padding: 12, background: "var(--warning-100)", borderRadius: 8, color: "var(--warning-700)", fontSize: 12.5 }}>
+          {lock ? <><strong>เคสเกินกำหนด:</strong> {lock.stage} — {lock.detail}</> : <>เคสยังไม่เกินกำหนด — การขยายจะเพิ่มเวลาสำรองให้</>}
+          <div style={{ marginTop: 4 }}>การขยายมีผลกับกรอบเวลา SLA ของเคสนี้ทุกขั้นตอน และเวลายังนับต่อ (ขยายเพิ่มได้อีกภายหลัง)</div>
+          {c.slaExtensionDays > 0 && <div style={{ marginTop: 4 }}>เคยขยายไปแล้วรวม <strong>{c.slaExtensionDays} วัน</strong></div>}
+        </div>
+        <FormField label="จำนวนวันที่ขยาย" req hint="จำนวนเต็ม 1–365 วัน">
+          <input type="number" min="1" max="365" className="input mono" style={{ width: 140 }}
+            placeholder="เช่น 7" value={days} onChange={(e) => setDays(e.target.value)} />
+        </FormField>
+        <FormField label="เหตุผลการขยาย">
+          <textarea className="textarea" rows={3} placeholder="เช่น รอผลตรวจวิเคราะห์จากกรมวิทยาศาสตร์การแพทย์" value={reason} onChange={(e) => setReason(e.target.value)} />
         </FormField>
       </div>
     </Modal>

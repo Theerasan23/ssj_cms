@@ -40,14 +40,6 @@ const MASTER = {
     "สถานที่ผลิตไม่ได้มาตรฐาน", "อาหารไม่บริสุทธิ์ (มีสารอันตราย)", "ให้ตรวจสอบการอนุญาต",
     "ผลิตภัณฑ์ปลอม/ผิดกฎหมาย", "ไม่ได้รับอนุญาต", "โภชนาการ (GDA)",
   ],
-  officers: [
-    { id: "off-1", name: "นายพันธ์เทพ เพชรผึ้ง" },
-    { id: "off-2", name: "นายณรงค์เดช นนทเบญจวรรณ" },
-    { id: "off-3", name: "นางณัฐสิรี เปี้ยปลูก" },
-    { id: "off-4", name: "นางสาวโสภิฏดา สิรยากร" },
-    { id: "off-5", name: "นางวิมลรัตน์ อ่อนชุลี" },
-    { id: "off-6", name: "นายกรกฤษณ์ สิงห์ป้อง" },
-  ],
   committees: [
     "คณะกรรมการพิจารณาคดี", "คณะกรรมการเปรียบเทียบคดี",
     "คณะกรรมการองค์คณะปรับพินัย", "คณะกรรมการกลั่นกรองฯ",
@@ -65,12 +57,36 @@ const MASTER = {
     { id: "sec-30", law: "heal", text: "มาตรา 22 ประกอบกิจการเพื่อสุขภาพโดยไม่ได้รับอนุญาต", fines: [15000, 30000, 45000] },
     { id: "sec-15", law: "med", text: "มาตรา 6 เครื่องมือแพทย์ไม่ได้รับอนุญาต", fines: [20000, 40000, 60000] },
   ],
+  // workflow roles — พัสดุสร้างเคส → หัวหน้าอนุมัติ+มอบหมาย → เจ้าหน้าที่ดำเนินการ →
+  // เจ้าหน้าที่ค่าปรับ (เฉพาะขั้นชำระค่าปรับ)
   roles: [
-    { id: "admin",   name: "ปวีณา จันทกานต์",      role: "Admin",                  initials: "ปจ", desc: "ผู้ดูแลระบบ", officer: null,    username: "paweena.j" },
-    { id: "head",    name: "อรุณ สุขสวัสดิ์",        role: "หัวหน้ากลุ่มงาน คบส.",   initials: "อส", desc: "หัวหน้ากลุ่มงานคุ้มครองผู้บริโภค", officer: null, username: "arun.s" },
-    { id: "officer", name: "นางณัฐสิรี เปี้ยปลูก",  role: "พนักงานเจ้าหน้าที่",     initials: "ณป", desc: "Officer", officer: "off-3", username: "natsiri.p" },
-    { id: "exec",    name: "นพ.สมชาย วงศ์ไพศาล",    role: "ผู้บริหาร / นพ.สสจ.",     initials: "สว", desc: "Nayok / View only", officer: null, username: "drsomchai.w" },
+    { id: "admin",   label: "Admin",                 initials: "AD", desc: "ผู้ดูแลระบบ — จัดการ master data ผู้ใช้และสิทธิ์ ปลดล็อกเคส" },
+    { id: "head",    label: "หัวหน้ากลุ่มงาน คบส.",  initials: "หน", desc: "อนุมัติเคสและมอบหมายเจ้าหน้าที่ดำเนินการ" },
+    { id: "supply",  label: "เจ้าหน้าที่พัสดุ",       initials: "พด", desc: "สร้างเคสใหม่และส่งขออนุมัติหัวหน้ากลุ่มงาน" },
+    { id: "officer", label: "เจ้าหน้าที่ดำเนินการ",   initials: "จด", desc: "รับมอบหมายจากหัวหน้า ตรวจสอบข้อเท็จจริง บันทึกมติ และติดตามผล" },
+    { id: "fine",    label: "เจ้าหน้าที่ค่าปรับ",     initials: "คป", desc: "บันทึกการชำระค่าปรับและปิดเคสขั้นเปรียบเทียบปรับ" },
+    { id: "exec",    label: "ผู้บริหาร / นพ.สสจ.",    initials: "ผบ", desc: "ดูภาพรวมและรายงาน (view only)" },
   ],
+  // login accounts — assignment targets user accounts (role "officer") directly
+  users: [
+    { username: "paweena.j",   role: "admin",   name: "ปวีณา จันทกานต์",           initials: "ปจ" },
+    { username: "arun.s",      role: "head",    name: "อรุณ สุขสวัสดิ์",            initials: "อส" },
+    { username: "supawan.t",   role: "supply",  name: "นางสาวสุภาวรรณ ทองดี",      initials: "สท" },
+    { username: "pantep.p",    role: "officer", name: "นายพันธ์เทพ เพชรผึ้ง",       initials: "พพ" },
+    { username: "narongdet.n", role: "officer", name: "นายณรงค์เดช นนทเบญจวรรณ",   initials: "ณน" },
+    { username: "natsiri.p",   role: "officer", name: "นางณัฐสิรี เปี้ยปลูก",       initials: "ณป" },
+    { username: "sopitda.s",   role: "officer", name: "นางสาวโสภิฏดา สิรยากร",     initials: "สส" },
+    { username: "wimonrat.o",  role: "officer", name: "นางวิมลรัตน์ อ่อนชุลี",      initials: "วอ" },
+    { username: "korakrit.s",  role: "officer", name: "นายกรกฤษณ์ สิงห์ป้อง",       initials: "กส" },
+    { username: "manee.r",     role: "fine",    name: "นางมณี รักษาทรัพย์",         initials: "มร" },
+    { username: "drsomchai.w", role: "exec",    name: "นพ.สมชาย วงศ์ไพศาล",        initials: "สว" },
+  ],
+};
+
+// sample-case assignees are written with the legacy off-X ids → map to usernames
+const ASSIGNEE_USERNAME = {
+  "off-1": "pantep.p", "off-2": "narongdet.n", "off-3": "natsiri.p",
+  "off-4": "sopitda.s", "off-5": "wimonrat.o", "off-6": "korakrit.s",
 };
 
 // ตำบลจริงของ จ.นนทบุรี (52 ตำบล) — key = ชื่ออำเภอใน MASTER.districts
@@ -111,9 +127,9 @@ const SAMPLE_CASES = [
       { name: "บันทึกร้องเรียน.pdf", size: "180 KB", type: "pdf" },
     ],
     investigation: { siteVisitDate: null, sitePlace: "", siteResult: "", meetingDate: null, meetingPlace: "", meetingSummary: "" },
-    board: null, fines: [], createdBy: "officer", createdAt: offsetDays(today, -7),
+    board: null, fines: [], createdBy: "supply", createdAt: offsetDays(today, -7),
     timeline: [
-      { date: offsetDays(today, -7), time: "09:14", title: "สร้างเคสในระบบ", user: "นางณัฐสิรี เปี้ยปลูก", kind: "create", status: "in-time" },
+      { date: offsetDays(today, -7), time: "09:14", title: "สร้างเคสในระบบ", user: "นางสาวสุภาวรรณ ทองดี", kind: "create", status: "in-time" },
       { date: offsetDays(today, -5), time: "14:02", title: "มอบหมายให้เจ้าหน้าที่ 2 คน", user: "อรุณ สุขสวัสดิ์", kind: "assign", status: "in-time" },
     ],
   },
@@ -138,9 +154,9 @@ const SAMPLE_CASES = [
       meetingSummary: "คลินิกชี้แจงว่าโฆษณาทำโดยทีมการตลาดภายนอก ยอมรับว่าควรปรับปรุง",
     },
     board: { committees: ["คณะกรรมการพิจารณาคดี"], meetingNo: 5, year: 2569, meetingDate: null, resolution: null, sections: [], notes: "" },
-    fines: [], createdBy: "officer", createdAt: offsetDays(today, -44),
+    fines: [], createdBy: "supply", createdAt: offsetDays(today, -44),
     timeline: [
-      { date: offsetDays(today, -44), time: "10:30", title: "สร้างเคสในระบบ", user: "นางณัฐสิรี เปี้ยปลูก", kind: "create", status: "in-time" },
+      { date: offsetDays(today, -44), time: "10:30", title: "สร้างเคสในระบบ", user: "นางสาวสุภาวรรณ ทองดี", kind: "create", status: "in-time" },
       { date: offsetDays(today, -43), time: "09:00", title: "มอบหมายให้เจ้าหน้าที่", user: "อรุณ สุขสวัสดิ์", kind: "assign", status: "in-time" },
       { date: offsetDays(today, -25), time: "13:00", title: "ลงพื้นที่ตรวจสอบ", user: "นางณัฐสิรี เปี้ยปลูก", kind: "investigate", status: "in-time" },
       { date: offsetDays(today, -18), time: "10:00", title: "เชิญพบเพื่อชี้แจง", user: "นางวิมลรัตน์ อ่อนชุลี", kind: "investigate", status: "in-time" },
@@ -171,9 +187,9 @@ const SAMPLE_CASES = [
       resolution: "เปรียบเทียบปรับ", sections: [{ secId: "sec-72", count: 1, fine: 10000 }], notes: "มีหลักฐานชัดเจน ยอมรับผิด",
     },
     fines: [{ secId: "sec-72", count: 1, amount: 10000, paid: false, paidDate: null, paidAmount: 0 }],
-    createdBy: "officer", createdAt: offsetDays(today, -89),
+    createdBy: "supply", createdAt: offsetDays(today, -89),
     timeline: [
-      { date: offsetDays(today, -89), time: "09:00", title: "สร้างเคส (เคสเฝ้าระวัง)", user: "นางณัฐสิรี เปี้ยปลูก", kind: "create", status: "in-time" },
+      { date: offsetDays(today, -89), time: "09:00", title: "สร้างเคส (เคสเฝ้าระวัง)", user: "นางสาวสุภาวรรณ ทองดี", kind: "create", status: "in-time" },
       { date: offsetDays(today, -88), time: "11:00", title: "มอบหมาย", user: "อรุณ สุขสวัสดิ์", kind: "assign", status: "in-time" },
       { date: offsetDays(today, -70), time: "13:30", title: "ลงพื้นที่ตรวจสอบ", user: "นายณรงค์เดช นนทเบญจวรรณ", kind: "investigate", status: "in-time" },
       { date: offsetDays(today, -65), time: "14:00", title: "เชิญพบเพื่อชี้แจง", user: "นายกรกฤษณ์ สิงห์ป้อง", kind: "investigate", status: "in-time" },
@@ -196,9 +212,9 @@ const SAMPLE_CASES = [
       { name: "ใบรับรองแพทย์.pdf", size: "320 KB", type: "pdf" },
     ],
     investigation: { siteVisitDate: null, sitePlace: "", siteResult: "", meetingDate: null, meetingPlace: "", meetingSummary: "" },
-    board: null, fines: [], createdBy: "officer", createdAt: offsetDays(today, -1),
+    board: null, fines: [], createdBy: "supply", createdAt: offsetDays(today, -1),
     timeline: [
-      { date: offsetDays(today, -1), time: "15:20", title: "สร้างเคส (รับเรื่องด้วยตนเอง)", user: "นางณัฐสิรี เปี้ยปลูก", kind: "create", status: "in-time" },
+      { date: offsetDays(today, -1), time: "15:20", title: "สร้างเคส (รับเรื่องด้วยตนเอง)", user: "นางสาวสุภาวรรณ ทองดี", kind: "create", status: "in-time" },
     ],
   },
   {
@@ -220,9 +236,9 @@ const SAMPLE_CASES = [
       committees: ["คณะกรรมการพิจารณาคดี"], meetingNo: 3, year: 2569, meetingDate: offsetDays(today, -90),
       resolution: "ดำเนินคดี (ส่งตำรวจ)", sections: [], notes: "ส่งสำนวนให้ตำรวจ บก.ปคบ. แล้ว",
     },
-    fines: [], createdBy: "officer", createdAt: offsetDays(today, -119),
+    fines: [], createdBy: "supply", createdAt: offsetDays(today, -119),
     timeline: [
-      { date: offsetDays(today, -119), time: "08:00", title: "สร้างเคส (แจ้งเบาะแส)", user: "นางณัฐสิรี เปี้ยปลูก", kind: "create", status: "in-time" },
+      { date: offsetDays(today, -119), time: "08:00", title: "สร้างเคส (แจ้งเบาะแส)", user: "นางสาวสุภาวรรณ ทองดี", kind: "create", status: "in-time" },
       { date: offsetDays(today, -118), time: "09:00", title: "มอบหมาย", user: "อรุณ สุขสวัสดิ์", kind: "assign", status: "in-time" },
       { date: offsetDays(today, -110), time: "16:00", title: "ลงพื้นที่ + จับกุม", user: "นายพันธ์เทพ เพชรผึ้ง", kind: "investigate", status: "in-time" },
       { date: offsetDays(today, -90), time: "10:00", title: "บันทึกมติ: ดำเนินคดี", user: "นางณัฐสิรี เปี้ยปลูก", kind: "board", status: "in-time" },
@@ -250,9 +266,9 @@ const SAMPLE_CASES = [
       resolution: "เปรียบเทียบปรับ", sections: [{ secId: "sec-72", count: 1, fine: 10000 }], notes: "ยอมรับผิด, ยอมจ่ายค่าปรับ",
     },
     fines: [{ secId: "sec-72", count: 1, amount: 10000, paid: true, paidDate: offsetDays(today, -100), paidAmount: 10000 }],
-    createdBy: "officer", createdAt: offsetDays(today, -179),
+    createdBy: "supply", createdAt: offsetDays(today, -179),
     timeline: [
-      { date: offsetDays(today, -179), time: "09:00", title: "สร้างเคส", user: "นางณัฐสิรี เปี้ยปลูก", kind: "create", status: "in-time" },
+      { date: offsetDays(today, -179), time: "09:00", title: "สร้างเคส", user: "นางสาวสุภาวรรณ ทองดี", kind: "create", status: "in-time" },
       { date: offsetDays(today, -178), time: "10:00", title: "มอบหมาย", user: "อรุณ สุขสวัสดิ์", kind: "assign", status: "in-time" },
       { date: offsetDays(today, -160), time: "13:00", title: "ลงพื้นที่", user: "นายณรงค์เดช นนทเบญจวรรณ", kind: "investigate", status: "in-time" },
       { date: offsetDays(today, -155), time: "14:00", title: "เชิญพบ", user: "นายณรงค์เดช นนทเบญจวรรณ", kind: "investigate", status: "in-time" },
@@ -273,9 +289,9 @@ const SAMPLE_CASES = [
     assignees: ["off-5"], assignedAt: offsetDays(today, -22), assignedBy: "head", status: "02",
     attachments: [{ name: "ภาพหน้าร้าน.jpg", size: "1.2 MB", type: "image" }],
     investigation: { siteVisitDate: null, sitePlace: "", siteResult: "", meetingDate: null, meetingPlace: "", meetingSummary: "" },
-    board: null, fines: [], createdBy: "officer", createdAt: offsetDays(today, -24),
+    board: null, fines: [], createdBy: "supply", createdAt: offsetDays(today, -24),
     timeline: [
-      { date: offsetDays(today, -24), time: "10:00", title: "สร้างเคส", user: "นางณัฐสิรี เปี้ยปลูก", kind: "create", status: "in-time" },
+      { date: offsetDays(today, -24), time: "10:00", title: "สร้างเคส", user: "นางสาวสุภาวรรณ ทองดี", kind: "create", status: "in-time" },
       { date: offsetDays(today, -22), time: "09:30", title: "มอบหมาย", user: "อรุณ สุขสวัสดิ์", kind: "assign", status: "in-time" },
     ],
   },
@@ -296,9 +312,9 @@ const SAMPLE_CASES = [
       meetingDate: offsetDays(today, -40), meetingPlace: "สสจ.นนทบุรี", meetingSummary: "ผู้ประกอบการรับทราบ ยอมหยุดโฆษณาทันที",
     },
     board: { committees: ["คณะกรรมการพิจารณาคดี"], meetingNo: null, year: 2569, meetingDate: null, resolution: null, sections: [], notes: "" },
-    fines: [], createdBy: "officer", createdAt: offsetDays(today, -64),
+    fines: [], createdBy: "supply", createdAt: offsetDays(today, -64),
     timeline: [
-      { date: offsetDays(today, -64), time: "09:00", title: "สร้างเคส", user: "นางณัฐสิรี เปี้ยปลูก", kind: "create", status: "in-time" },
+      { date: offsetDays(today, -64), time: "09:00", title: "สร้างเคส", user: "นางสาวสุภาวรรณ ทองดี", kind: "create", status: "in-time" },
       { date: offsetDays(today, -62), time: "10:00", title: "มอบหมาย", user: "อรุณ สุขสวัสดิ์", kind: "assign", status: "in-time" },
       { date: offsetDays(today, -50), time: "13:30", title: "ลงพื้นที่", user: "นางณัฐสิรี เปี้ยปลูก", kind: "investigate", status: "in-time" },
       { date: offsetDays(today, -40), time: "10:00", title: "เชิญพบ", user: "นางสาวโสภิฏดา สิรยากร", kind: "investigate", status: "in-time" },
@@ -316,9 +332,9 @@ const SAMPLE_CASES = [
     assignees: [], assignedAt: null, assignedBy: null, status: "01",
     attachments: [],
     investigation: { siteVisitDate: null, sitePlace: "", siteResult: "", meetingDate: null, meetingPlace: "", meetingSummary: "" },
-    board: null, fines: [], createdBy: "officer", createdAt: offsetDays(today, -2),
+    board: null, fines: [], createdBy: "supply", createdAt: offsetDays(today, -2),
     timeline: [
-      { date: offsetDays(today, -2), time: "16:00", title: "สร้างเคส", user: "นางณัฐสิรี เปี้ยปลูก", kind: "create", status: "in-time" },
+      { date: offsetDays(today, -2), time: "16:00", title: "สร้างเคส", user: "นางสาวสุภาวรรณ ทองดี", kind: "create", status: "in-time" },
     ],
   },
 ];
@@ -394,13 +410,6 @@ async function main() {
       const l = MASTER.laws[i];
       await conn.query("INSERT INTO laws (id, label, ord) VALUES (?, ?, ?)", [l.id, l.label, i]);
     }
-    // officers (explicit ids)
-    for (let i = 0; i < MASTER.officers.length; i++) {
-      const o = MASTER.officers[i];
-      const first = o.name.split(" ")[0];
-      await conn.query("INSERT INTO officers (id, name, phone, email, ord) VALUES (?, ?, ?, ?, ?)",
-        [o.id, o.name, `081-xxx-${1000 + i * 111}`, `${first}@nbthealth.go.th`, i]);
-    }
     // law_sections
     for (let i = 0; i < MASTER.sections.length; i++) {
       const s = MASTER.sections[i];
@@ -409,15 +418,20 @@ async function main() {
     }
     // roles + users
     const passwordHash = bcrypt.hashSync("password123", 10);
-    const userIdByRole = {};
     for (let i = 0; i < MASTER.roles.length; i++) {
       const r = MASTER.roles[i];
-      await conn.query("INSERT INTO roles (id, name, role_label, initials, descr, officer_id, ord) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [r.id, r.name, r.role, r.initials, r.desc, r.officer, i]);
+      await conn.query("INSERT INTO roles (id, name, role_label, initials, descr, ord) VALUES (?, ?, ?, ?, ?, ?)",
+        [r.id, r.label, r.label, r.initials, r.desc, i]);
+    }
+    const userIdByUsername = {};
+    const userIdByRole = {}; // first user per role — sample-case creators
+    for (let i = 0; i < MASTER.users.length; i++) {
+      const u = MASTER.users[i];
       const [ures] = await conn.query(
-        "INSERT INTO users (username, password_hash, role_id, name, initials, email, officer_id, active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
-        [r.username, passwordHash, r.id, r.name, r.initials, `${r.username}@nbthealth.go.th`, r.officer]);
-      userIdByRole[r.id] = ures.insertId;
+        "INSERT INTO users (username, password_hash, role_id, name, initials, email, phone, active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+        [u.username, passwordHash, u.role, u.name, u.initials, `${u.username}@nbthealth.go.th`, `081-xxx-${1000 + i * 111}`]);
+      userIdByUsername[u.username] = ures.insertId;
+      if (userIdByRole[u.role] === undefined) userIdByRole[u.role] = ures.insertId;
     }
 
     // cases
@@ -450,7 +464,8 @@ async function main() {
         if (problemMap[p]) await conn.query("INSERT INTO case_problems (case_id, problem_id) VALUES (?, ?)", [c.id, problemMap[p]]);
       }
       for (const offId of c.assignees) {
-        await conn.query("INSERT INTO case_assignees (case_id, officer_id) VALUES (?, ?)", [c.id, offId]);
+        const uid = userIdByUsername[ASSIGNEE_USERNAME[offId] || offId];
+        if (uid) await conn.query("INSERT INTO case_assignees (case_id, user_id) VALUES (?, ?)", [c.id, uid]);
       }
       for (const a of c.attachments) {
         await conn.query("INSERT INTO case_attachments (case_id, name, size, type) VALUES (?, ?, ?, ?)", [c.id, a.name, a.size, a.type]);
@@ -502,7 +517,7 @@ async function main() {
     }
 
     await conn.commit();
-    console.log(`✓ seeded: ${SAMPLE_CASES.length} cases, ${MASTER.officers.length} officers, ${MASTER.roles.length} roles/users, ${NOTIFICATIONS.length} notifications`);
+    console.log(`✓ seeded: ${SAMPLE_CASES.length} cases, ${MASTER.roles.length} roles, ${MASTER.users.length} users, ${NOTIFICATIONS.length} notifications`);
   } catch (e) {
     await conn.rollback();
     throw e;

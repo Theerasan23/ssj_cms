@@ -34,7 +34,7 @@ function CaseList() {
   const filtered = useMemo(() => cases.filter((c) => {
     if (scope === "mine") {
       const byMe = role.userId != null && c.createdByUserId === role.userId;
-      const assignedToMe = role.officerId && c.assignees.includes(role.officerId);
+      const assignedToMe = role.userId != null && c.assignees.includes(role.userId);
       if (!byMe && !assignedToMe) return false;
     }
     if (query) {
@@ -86,7 +86,9 @@ function CaseList() {
               { header: "SLA", value: (c) => cms.caseSla(c).label },
               { header: "วันลงรับ POST", value: (c) => cms.fmtThaiDate(c.postDate) },
             ]} filename="cases" size="md" />
-            <button className="btn btn-primary" onClick={() => router.push("/cases/new")}><Icon name="plus" size={16} /> สร้างเคสใหม่</button>
+            {["supply", "head", "admin"].includes(role.id) && (
+              <button className="btn btn-primary" onClick={() => router.push("/cases/new")}><Icon name="plus" size={16} /> สร้างเคสใหม่</button>
+            )}
           </div>
         </div>
       </div>

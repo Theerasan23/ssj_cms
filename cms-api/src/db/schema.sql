@@ -21,7 +21,6 @@ DROP TABLE IF EXISTS cases;
 DROP TABLE IF EXISTS law_sections;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS roles;
-DROP TABLE IF EXISTS officers;
 DROP TABLE IF EXISTS laws;
 DROP TABLE IF EXISTS channels;
 DROP TABLE IF EXISTS sources;
@@ -109,15 +108,6 @@ CREATE TABLE laws (
   active TINYINT(1) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE officers (
-  id     VARCHAR(16)  PRIMARY KEY,
-  name   VARCHAR(128) NOT NULL,
-  phone  VARCHAR(32),
-  email  VARCHAR(128),
-  ord    INT NOT NULL DEFAULT 0,
-  active TINYINT(1) NOT NULL DEFAULT 1
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 CREATE TABLE law_sections (
   id     VARCHAR(16)  PRIMARY KEY,
   law_id VARCHAR(16)  NOT NULL,
@@ -129,16 +119,15 @@ CREATE TABLE law_sections (
   CONSTRAINT fk_section_law FOREIGN KEY (law_id) REFERENCES laws(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- roles double as the displayed identity in the demo role-switcher
+-- workflow roles: admin | head | supply (พัสดุ สร้างเคส) | officer (ดำเนินการ ผู้รับมอบหมาย)
+--                 | fine (ค่าปรับ เฉพาะขั้นชำระ) | exec (view only)
 CREATE TABLE roles (
-  id         VARCHAR(16)  PRIMARY KEY,           -- admin | head | officer | exec
-  name       VARCHAR(128) NOT NULL,             -- person name
+  id         VARCHAR(16)  PRIMARY KEY,
+  name       VARCHAR(128) NOT NULL,
   role_label VARCHAR(128) NOT NULL,             -- job title shown in UI
   initials   VARCHAR(8)   NOT NULL,
   descr      VARCHAR(191),
-  officer_id VARCHAR(16),                       -- maps a role to an officer (for "my cases")
-  ord        INT NOT NULL DEFAULT 0,
-  CONSTRAINT fk_role_officer FOREIGN KEY (officer_id) REFERENCES officers(id)
+  ord        INT NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE users (
@@ -151,10 +140,8 @@ CREATE TABLE users (
   email         VARCHAR(128),
   phone         VARCHAR(32),
   active        TINYINT(1) NOT NULL DEFAULT 1,
-  officer_id    VARCHAR(16),
   last_login    DATETIME,
-  CONSTRAINT fk_user_role FOREIGN KEY (role_id) REFERENCES roles(id),
-  CONSTRAINT fk_user_officer FOREIGN KEY (officer_id) REFERENCES officers(id)
+  CONSTRAINT fk_user_role FOREIGN KEY (role_id) REFERENCES roles(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------- Cases ----------------
@@ -206,6 +193,8 @@ CREATE TABLE cases (
   has_board            TINYINT(1) NOT NULL DEFAULT 0,
 
   lock_overridden      TINYINT(1) NOT NULL DEFAULT 0,
+  -- cumulative days the head extended this case's SLA (added to every stage window)
+  sla_extension_days   INT NOT NULL DEFAULT 0,
   cancel_reason        VARCHAR(255),
   -- statuses 06/07/09 stay active (follow-up) until explicitly closed
   closed_at            DATE,
@@ -248,12 +237,13 @@ CREATE TABLE case_problems (
   CONSTRAINT fk_cp_problem FOREIGN KEY (problem_id) REFERENCES problems(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- assignees are real user accounts (role "officer") so they can log in and act
 CREATE TABLE case_assignees (
-  case_id    VARCHAR(32) NOT NULL,
-  officer_id VARCHAR(16) NOT NULL,
-  PRIMARY KEY (case_id, officer_id),
-  CONSTRAINT fk_ca_case    FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
-  CONSTRAINT fk_ca_officer FOREIGN KEY (officer_id) REFERENCES officers(id)
+  case_id VARCHAR(32) NOT NULL,
+  user_id INT NOT NULL,
+  PRIMARY KEY (case_id, user_id),
+  CONSTRAINT fk_ca_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ca_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE case_attachments (

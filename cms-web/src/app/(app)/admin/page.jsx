@@ -9,13 +9,14 @@ import { api } from "@/lib/api";
 import { fmtThaiDate } from "@/lib/format";
 
 // Field metadata for each editable lookup entity (matches the API).
+// (พนักงานเจ้าหน้าที่ถูกย้ายไปอยู่ใน "ผู้ใช้และสิทธิ์" — มอบหมายงานให้บัญชีผู้ใช้โดยตรง)
 const ENTITY_META = {
   channels:    { label: "ช่องทางการร้องเรียน", icon: "phone",   fields: [{ key: "name", label: "ชื่อ" }] },
   laws:        { label: "พรบ.",                icon: "shield",  fields: [{ key: "id", label: "รหัส (id)", pk: true }, { key: "label", label: "ชื่อ พรบ." }] },
   sources:     { label: "ที่มาของผู้ร้อง",      icon: "tag",     fields: [{ key: "name", label: "ชื่อ" }] },
   problems:    { label: "ประเภทปัญหา",         icon: "alert",   fields: [{ key: "name", label: "ชื่อ" }] },
-  officers:    { label: "พนักงานเจ้าหน้าที่",  icon: "users",   fields: [{ key: "id", label: "รหัส (id)", pk: true }, { key: "name", label: "ชื่อ" }, { key: "phone", label: "โทร" }, { key: "email", label: "Email" }] },
-  sections:    { label: "มาตรา + ค่าปรับ",     icon: "gavel",   fields: [{ key: "id", label: "รหัส (id)", pk: true }, { key: "law_id", label: "พรบ. (law id)" }, { key: "text", label: "ข้อความมาตรา" }, { key: "fine1", label: "ค่าปรับครั้งที่ 1", num: true }, { key: "fine2", label: "ครั้งที่ 2", num: true }, { key: "fine3", label: "ครั้งที่ 3", num: true }] },
+  // เพิ่มมาตรา: เลือกพรบ. ก่อน แล้วจึงกรอกมาตรา · id เว้นว่างได้ (ระบบสร้างให้)
+  sections:    { label: "มาตรา + ค่าปรับ",     icon: "gavel",   fields: [{ key: "law_id", label: "พรบ.", lawSelect: true }, { key: "text", label: "ข้อความมาตรา" }, { key: "fine1", label: "ค่าปรับครั้งที่ 1", num: true }, { key: "fine2", label: "ครั้งที่ 2", num: true }, { key: "fine3", label: "ครั้งที่ 3", num: true }, { key: "id", label: "รหัส (id)", pk: true, optional: true }] },
   committees:  { label: "คณะกรรมการ",          icon: "users",   fields: [{ key: "name", label: "ชื่อ" }] },
   resolutions: { label: "มติคณะกรรมการ",        icon: "gavel",   fields: [{ key: "name", label: "ชื่อ" }] },
   districts:   { label: "อำเภอ",               icon: "map-pin", fields: [{ key: "name", label: "ชื่อ" }] },
@@ -76,7 +77,7 @@ export default function AdminPage() {
 }
 
 function EntityManager({ entity, meta }) {
-  const { actions } = useApp();
+  const { actions, cms } = useApp();
   const toast = useToasts();
   const [rows, setRows] = useState(null);
   const [editing, setEditing] = useState(null); // { row, isNew }
@@ -131,7 +132,7 @@ function EntityManager({ entity, meta }) {
           <tbody>
             {rows && rows.map((r) => (
               <tr key={r.id} style={{ cursor: "default" }}>
-                {meta.fields.map((f) => <td key={f.key} className={f.num ? "num" : ""} style={{ maxWidth: 320 }}>{f.num ? Number(r[f.key]).toLocaleString("th-TH") : r[f.key]}</td>)}
+                {meta.fields.map((f) => <td key={f.key} className={f.num ? "num" : ""} style={{ maxWidth: 320 }}>{f.num ? Number(r[f.key]).toLocaleString("th-TH") : f.lawSelect ? cms.lawLabel(r[f.key]) : r[f.key]}</td>)}
                 <td className="actions-cell">
                   <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ row: { ...r }, isNew: false })}><Icon name="edit" size={14} /></button>
                   <button className="btn btn-ghost btn-sm" onClick={() => remove(r)}><Icon name="trash" size={14} /></button>
@@ -152,6 +153,7 @@ function EntityManager({ entity, meta }) {
 }
 
 function EntityForm({ meta, editing, onClose, onSave }) {
+  const { cms } = useApp();
   const [form, setForm] = useState(editing.row);
   return (
     <Modal open onClose={onClose} title={editing.isNew ? `เพิ่ม ${meta.label}` : `แก้ไข ${meta.label}`}
@@ -161,11 +163,21 @@ function EntityForm({ meta, editing, onClose, onSave }) {
       </>}>
       <div className="stack">
         {meta.fields.map((f) => (
-          <FormField key={f.key} label={f.label}>
-            <input className={`input ${f.num ? "mono" : ""}`} type={f.num ? "number" : "text"}
-              disabled={f.pk && !editing.isNew}
-              value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
+          <FormField key={f.key} label={f.label} req={f.lawSelect}>
+            {f.lawSelect ? (
+              // เลือกพรบ. ก่อน แล้วจึงกรอกมาตรา/ค่าปรับด้านล่าง
+              <select className="select" value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}>
+                <option value="">— เลือกพรบ. —</option>
+                {cms.MASTER.laws.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+              </select>
+            ) : (
+              <input className={`input ${f.num ? "mono" : ""}`} type={f.num ? "number" : "text"}
+                disabled={f.pk && !editing.isNew}
+                placeholder={f.pk && f.optional && editing.isNew ? "เว้นว่าง = สร้างอัตโนมัติ" : undefined}
+                value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
+            )}
             {f.pk && !editing.isNew && <span className="hint">รหัสหลักแก้ไขไม่ได้</span>}
+            {f.pk && f.optional && editing.isNew && <span className="hint">รหัสอ้างอิงทางเทคนิค — เว้นว่างให้ระบบสร้างอัตโนมัติได้</span>}
           </FormField>
         ))}
       </div>
@@ -252,11 +264,24 @@ function UserManager() {
     catch (e) { toast.push({ kind: "danger", title: "ลบไม่สำเร็จ", msg: e.message }); }
   }
 
+  const roles = cms.MASTER.roles || [];
+
   return (
     <div className="card">
       <div className="card-header">
-        <h3>ผู้ใช้และสิทธิ์</h3>
-        <button className="btn btn-primary btn-sm" onClick={() => setEditing({ row: { name: "", roleId: "officer", email: "", phone: "" }, isNew: true })}><Icon name="plus" size={14} /> เพิ่มเจ้าหน้าที่</button>
+        <div><h3>ผู้ใช้และสิทธิ์</h3><div className="card-sub">ทุกบทบาทเป็นบัญชีเข้าสู่ระบบ — สิทธิ์เป็นไปตามขั้นตอนของ flow ด้านล่าง</div></div>
+        <button className="btn btn-primary btn-sm" onClick={() => setEditing({ row: { name: "", roleId: "officer", email: "", phone: "" }, isNew: true })}><Icon name="plus" size={14} /> เพิ่มผู้ใช้</button>
+      </div>
+      {/* สิทธิ์ตาม flow: พัสดุสร้างเคส → หัวหน้าอนุมัติ+มอบหมาย → เจ้าหน้าที่ดำเนินการ → ค่าปรับเฉพาะขั้นชำระ */}
+      <div className="card-body" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="stack-sm">
+          {roles.map((r) => (
+            <div key={r.id} className="row" style={{ gap: 10, alignItems: "flex-start" }}>
+              <span className="chip primary" style={{ flexShrink: 0, minWidth: 150, justifyContent: "center" }}>{r.role}</span>
+              <span className="small muted" style={{ paddingTop: 2 }}>{r.desc || "—"}</span>
+            </div>
+          ))}
+        </div>
       </div>
       <div className="table-wrap">
         <table className="data">
@@ -279,9 +304,9 @@ function UserManager() {
           </tbody>
         </table>
       </div>
-      {editing && <UserForm editing={editing} roles={cms.MASTER.roles || []} onClose={() => setEditing(null)} onSave={save} />}
+      {editing && <UserForm editing={editing} roles={roles} onClose={() => setEditing(null)} onSave={save} />}
       {created && (
-        <Modal open onClose={() => setCreated(null)} title="เพิ่มเจ้าหน้าที่สำเร็จ"
+        <Modal open onClose={() => setCreated(null)} title="เพิ่มผู้ใช้สำเร็จ"
           footer={<button className="btn btn-primary" onClick={() => setCreated(null)}>เข้าใจแล้ว</button>}>
           <div className="stack">
             <div style={{ padding: 14, background: "var(--success-100)", borderRadius: 8, color: "var(--success-700)", fontSize: 13 }}>โปรดแจ้งข้อมูลเข้าสู่ระบบให้เจ้าหน้าที่ — เจ้าหน้าที่เปลี่ยนรหัสผ่านเองได้ในหน้าข้อมูลส่วนตัว</div>
@@ -299,18 +324,20 @@ function UserManager() {
 function UserForm({ editing, roles, onClose, onSave }) {
   const [form, setForm] = useState(editing.row);
   const set = (k, v) => setForm({ ...form, [k]: v });
+  const selectedRole = roles.find((r) => r.id === (form.roleId || "officer"));
   return (
-    <Modal open onClose={onClose} title={editing.isNew ? "เพิ่มเจ้าหน้าที่" : "แก้ไขผู้ใช้"}
+    <Modal open onClose={onClose} title={editing.isNew ? "เพิ่มผู้ใช้" : "แก้ไขผู้ใช้"}
       footer={<>
         <button className="btn btn-outline" onClick={onClose}>ยกเลิก</button>
         <button className="btn btn-primary" onClick={() => onSave(form, editing.isNew)}><Icon name="check" size={14} /> บันทึก</button>
       </>}>
       <div className="stack">
         <FormField label="ชื่อ-นามสกุล" req><input className="input" value={form.name || ""} onChange={(e) => set("name", e.target.value)} /></FormField>
-        <FormField label="บทบาท">
+        <FormField label="บทบาท / สิทธิ์">
           <select className="select" value={form.roleId || "officer"} onChange={(e) => set("roleId", e.target.value)}>
             {roles.map((r) => <option key={r.id} value={r.id}>{r.role}</option>)}
           </select>
+          {selectedRole?.desc && <span className="hint">{selectedRole.desc}</span>}
         </FormField>
         <div className="form-grid cols-2">
           <FormField label="อีเมล"><input className="input" value={form.email || ""} onChange={(e) => set("email", e.target.value)} /></FormField>

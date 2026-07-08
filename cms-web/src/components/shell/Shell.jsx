@@ -7,12 +7,13 @@ import { Logo, useClickOutside } from "@/components/ui";
 import { useApp } from "@/context/AppContext";
 import { api } from "@/lib/api";
 
+// roles: supply สร้างเคส · head อนุมัติ+มอบหมาย · officer ดำเนินการ · fine เฉพาะขั้นค่าปรับ
 const NAV_ITEMS = [
-  { key: "dashboard", label: "หน้าหลัก", icon: "home", href: "/dashboard", match: "/dashboard", roles: ["officer", "head", "admin", "exec"] },
+  { key: "dashboard", label: "หน้าหลัก", icon: "home", href: "/dashboard", match: "/dashboard", roles: ["supply", "officer", "fine", "head", "admin", "exec"] },
   { key: "approvals", label: "รายการขออนุมัติ", icon: "approve", href: "/approvals", match: "/approvals", roles: ["head", "admin"] },
-  { key: "cases", label: "เคสร้องเรียน", icon: "inbox", href: "/cases", match: "/cases", roles: ["officer", "head", "admin", "exec"] },
+  { key: "cases", label: "เคสร้องเรียน", icon: "inbox", href: "/cases", match: "/cases", roles: ["supply", "officer", "fine", "head", "admin", "exec"] },
   { key: "committee", label: "คณะกรรมการ", icon: "users", href: "/committee", match: "/committee", roles: ["officer", "head", "admin"] },
-  { key: "fines", label: "ค่าปรับ", icon: "coin", href: "/fines", match: "/fines", roles: ["officer", "head", "admin"] },
+  { key: "fines", label: "ค่าปรับ", icon: "coin", href: "/fines", match: "/fines", roles: ["officer", "fine", "head", "admin"] },
   { key: "reports", label: "รายงาน · KPI", icon: "chart", href: "/reports", match: "/reports", roles: ["head", "admin", "exec"] },
   { key: "admin", label: "ตั้งค่า (Admin)", icon: "settings", href: "/admin", match: "/admin", roles: ["admin"] },
 ];

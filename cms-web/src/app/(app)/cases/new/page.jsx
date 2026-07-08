@@ -1,14 +1,26 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { Icon } from "@/components/Icon";
 import { CaseForm, blankCaseForm } from "@/components/CaseForm";
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
 
 export default function CaseCreatePage() {
-  const { cms, actions } = useApp();
+  const { cms, actions, role } = useApp();
   const toast = useToasts();
   const router = useRouter();
+
+  // ตาม flow ใหม่ เจ้าหน้าที่พัสดุเป็นผู้สร้างเคส (หัวหน้า/Admin ทำแทนได้)
+  if (!["supply", "head", "admin"].includes(role.id)) {
+    return (
+      <main className="page"><div className="card"><div className="table-empty">
+        <div className="empty-icon"><Icon name="lock" size={26} /></div>
+        <div style={{ fontWeight: 600 }}>เฉพาะเจ้าหน้าที่พัสดุ (หรือหัวหน้า/Admin) เท่านั้นที่สร้างเคสใหม่ได้</div>
+        <button className="btn btn-primary" onClick={() => router.push("/cases")}>กลับสู่รายการเคส</button>
+      </div></div></main>
+    );
+  }
 
   async function createCase(payload, draft) {
     const created = await api.post("/cases", { ...payload, draft });

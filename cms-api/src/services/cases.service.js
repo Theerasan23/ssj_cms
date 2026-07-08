@@ -4,14 +4,13 @@ const pool = require("../db");
 const sla = require("./sla.service");
 
 const CASE_SELECT = `
-  SELECT c.*, s.name AS source_name, ch.name AS channel_name, d.name AS district_name, sd.name AS subdistrict_name, cur.name AS created_by_name
+  SELECT c.*, s.name AS source_name, ch.name AS channel_name, d.name AS district_name, sd.name AS subdistrict_name, cu.name AS created_by_name
   FROM cases c
   LEFT JOIN sources      s  ON s.id  = c.source_id
   LEFT JOIN channels     ch ON ch.id = c.complainant_channel_id
   LEFT JOIN districts    d  ON d.id  = c.respondent_district_id
   LEFT JOIN subdistricts sd ON sd.id = c.respondent_subdistrict_id
-  LEFT JOIN users     cu  ON cu.id  = c.created_by_user_id
-  LEFT JOIN roles     cur ON cur.id = cu.role_id
+  LEFT JOIN users        cu ON cu.id = c.created_by_user_id
 `;
 
 function groupBy(rows, key) {
@@ -91,6 +90,7 @@ function buildShape(r, rel) {
     assignedBy: r.assigned_by,
     status: r.status_code,
     lockOverridden: !!r.lock_overridden,
+    slaExtensionDays: r.sla_extension_days || 0,
     cancelReason: r.cancel_reason || "",
     closedAt: r.closed_at,
     // 05/08 are terminal; 06/07/09 count as closed only after the explicit close action
@@ -120,7 +120,7 @@ async function attachRelations(rows) {
   const [laws] = await pool.query(`SELECT case_id, law_id FROM case_laws WHERE case_id IN (${ph})`, ids);
   const [problems] = await pool.query(
     `SELECT cp.case_id, p.name FROM case_problems cp JOIN problems p ON p.id = cp.problem_id WHERE cp.case_id IN (${ph})`, ids);
-  const [assignees] = await pool.query(`SELECT case_id, officer_id FROM case_assignees WHERE case_id IN (${ph})`, ids);
+  const [assignees] = await pool.query(`SELECT case_id, user_id FROM case_assignees WHERE case_id IN (${ph})`, ids);
   const [atts] = await pool.query(`SELECT case_id, id, name, size, type, (stored_name IS NOT NULL) AS hasFile FROM case_attachments WHERE case_id IN (${ph}) ORDER BY id`, ids);
   const [boardCom] = await pool.query(
     `SELECT bc.case_id, c.name FROM case_board_committees bc JOIN committees c ON c.id = bc.committee_id WHERE bc.case_id IN (${ph})`, ids);
@@ -175,7 +175,7 @@ async function attachRelations(rows) {
       })),
       laws: (gLaws.get(r.id) || []).map((x) => x.law_id),
       problems: (gProblems.get(r.id) || []).map((x) => x.name),
-      assignees: (gAssignees.get(r.id) || []).map((x) => x.officer_id),
+      assignees: (gAssignees.get(r.id) || []).map((x) => x.user_id),
       attachments: (gAtts.get(r.id) || []).map((x) => ({ id: x.id, name: x.name, size: x.size, type: x.type, hasFile: !!x.hasFile })),
       boardCom: (gBoardCom.get(r.id) || []).map((x) => x.name),
       boardSec: (gBoardSec.get(r.id) || []).map((x) => ({ secId: x.secId, count: x.count, fine: x.fine })),
@@ -210,7 +210,7 @@ async function listCases(filters, currentRole) {
     if (c.isDraft && !(currentRole && currentRole.userId != null && c.createdByUserId === currentRole.userId)) return false;
     if (scope === "mine" && currentRole) {
       const byMe = currentRole.userId != null && c.createdByUserId === currentRole.userId;
-      const assignedToMe = currentRole.officerId && c.assignees.includes(currentRole.officerId);
+      const assignedToMe = currentRole.userId != null && c.assignees.includes(currentRole.userId);
       if (!byMe && !assignedToMe) return false;
     }
     if (q) {
@@ -294,12 +294,17 @@ async function userIdsForRoles(conn, roles) {
   return rows.map((r) => r.id);
 }
 
-// Map assignee officer ids → their active user accounts (officers without a login are skipped).
-async function userIdsForOfficers(conn, officerIds) {
-  if (!officerIds.length) return [];
-  const ph = officerIds.map(() => "?").join(",");
-  const [rows] = await conn.query(`SELECT id FROM users WHERE officer_id IN (${ph}) AND active = 1`, officerIds);
-  return rows.map((r) => r.id);
+// Assignees must be real logins: active users with role เจ้าหน้าที่ดำเนินการ (officer).
+// Returns the matching rows (id + name) or throws 400 when any id is invalid.
+async function assertAssignableUsers(conn, userIds) {
+  if (!userIds.length) { const e = new Error("กรุณาเลือกเจ้าหน้าที่อย่างน้อย 1 คน"); e.status = 400; throw e; }
+  const ph = userIds.map(() => "?").join(",");
+  const [rows] = await conn.query(
+    `SELECT id, name FROM users WHERE id IN (${ph}) AND active = 1 AND role_id = 'officer'`, userIds);
+  if (rows.length !== userIds.length) {
+    const e = new Error("มอบหมายได้เฉพาะบัญชีเจ้าหน้าที่ดำเนินการที่เปิดใช้งานเท่านั้น"); e.status = 400; throw e;
+  }
+  return rows;
 }
 
 // Server-side validation for new cases (defense-in-depth; the form validates too)
@@ -412,23 +417,26 @@ async function createCase(payload, user) {
 }
 
 // ---------- workflow ----------
-async function assignCase(id, officerIds, byRole, byName, note) {
+// Head approves + assigns the case to เจ้าหน้าที่ดำเนินการ (user accounts) — the
+// assignees log in and drive every following step of the workflow.
+async function assignCase(id, userIds, byRole, byName, note) {
   const c = await assertActionable(id, ["01"]);
   if (c.isDraft) { const e = new Error("เคสยังเป็นร่าง — ผู้สร้างต้องส่งขออนุมัติก่อนจึงจะมอบหมายได้"); e.status = 409; throw e; }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    const assignees = await assertAssignableUsers(conn, userIds);
     await conn.query("UPDATE cases SET assigned_at = ?, assigned_by = ?, status_code = '02' WHERE id = ?", [sla.TODAY(), byRole, id]);
     await conn.query("DELETE FROM case_assignees WHERE case_id = ?", [id]);
-    for (const off of officerIds) {
-      await conn.query("INSERT IGNORE INTO case_assignees (case_id, officer_id) VALUES (?, ?)", [id, off]);
+    for (const uid of userIds) {
+      await conn.query("INSERT IGNORE INTO case_assignees (case_id, user_id) VALUES (?, ?)", [id, uid]);
     }
     await addTimeline(conn, id, {
-      title: `อนุมัติและมอบหมายให้ ${officerIds.length} เจ้าหน้าที่${note ? ` — ${note}` : ""}`,
+      title: `อนุมัติและมอบหมายให้ ${assignees.map((a) => a.name).join(", ")}${note ? ` — ${note}` : ""}`,
       user: byName, kind: "assign",
     });
     // notify only the officers who were actually assigned
-    await notifyUsers(conn, await userIdsForOfficers(conn, officerIds), { icon: "info", title: `ได้รับมอบหมายเคส: ${c.title}`, caseId: id });
+    await notifyUsers(conn, userIds, { icon: "info", title: `ได้รับมอบหมายเคส: ${c.title}`, caseId: id });
     await conn.commit();
   } catch (e) {
     await conn.rollback();
@@ -659,6 +667,10 @@ async function applyBoardResolution(id, byName) {
     }
     await addTimeline(conn, id, { title: `ดำเนินการตามมติ: ${latest.resolution} (ครั้งที่ ${latest.meetingNo}/${latest.year})`, user: byName, kind: "decision" });
     if (line) await addTimeline(conn, id, { title: line, user: "—", kind: "close" });
+    // the fine stage is handled by เจ้าหน้าที่ค่าปรับ — tell them a case just entered it
+    if (makeFines) {
+      await notifyUsers(conn, await userIdsForRoles(conn, ["fine"]), { icon: "info", title: `เคส ${c.etracking} เข้าสู่ขั้นชำระค่าปรับ`, caseId: id });
+    }
     await conn.commit();
   } catch (e) {
     await conn.rollback();
@@ -698,8 +710,8 @@ async function savePayment(id, fineId, paidDate, amount, byName) {
     const allPaid = fines.length > 0 && fines.every((f) => f.paid);
     if (allPaid) {
       await addTimeline(conn, id, { title: "ค่าปรับทั้งหมดชำระครบ — รอเจ้าหน้าที่ปิดเคส", user: "—", kind: "fine" });
-      // the assignees close the case; heads/admins oversee it
-      const payRecipients = [...await userIdsForOfficers(conn, c.assignees), ...await userIdsForRoles(conn, ["head", "admin"])];
+      // assignees + fine officers close the case; heads/admins oversee it
+      const payRecipients = [...c.assignees, ...await userIdsForRoles(conn, ["head", "admin", "fine"])];
       await notifyUsers(conn, payRecipients, { icon: "success", title: `เคส ${c.etracking} ชำระค่าปรับครบแล้ว — พร้อมปิดเคส`, caseId: id });
     }
     await conn.commit();
@@ -731,25 +743,23 @@ async function closeFineCase(id, byName) {
 // Head/admin re-assigns an active case to a new set of officers (status unchanged).
 // NOTE: assigned_at is intentionally NOT touched — it is the SLA anchor for the
 // investigate/board stages, so changing officers must not restart those clocks.
-async function reassignCase(id, officerIds, byRole, byName, note) {
+async function reassignCase(id, userIds, byRole, byName, note) {
   const c = await assertActionable(id, ["02", "03", "04"]);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const ph = officerIds.map(() => "?").join(",");
-    const [offs] = await conn.query(`SELECT id, name FROM officers WHERE id IN (${ph})`, officerIds);
-    if (offs.length !== officerIds.length) { const e = new Error("พบเจ้าหน้าที่ไม่ถูกต้อง"); e.status = 400; throw e; }
+    const assignees = await assertAssignableUsers(conn, userIds);
     await conn.query("UPDATE cases SET assigned_by = ? WHERE id = ?", [byRole, id]);
     await conn.query("DELETE FROM case_assignees WHERE case_id = ?", [id]);
-    for (const off of officerIds) {
-      await conn.query("INSERT IGNORE INTO case_assignees (case_id, officer_id) VALUES (?, ?)", [id, off]);
+    for (const uid of userIds) {
+      await conn.query("INSERT IGNORE INTO case_assignees (case_id, user_id) VALUES (?, ?)", [id, uid]);
     }
     await addTimeline(conn, id, {
-      title: `เปลี่ยนผู้รับผิดชอบเป็น ${offs.map((o) => o.name).join(", ")}${note ? ` — ${note}` : ""}`,
+      title: `เปลี่ยนผู้รับผิดชอบเป็น ${assignees.map((a) => a.name).join(", ")}${note ? ` — ${note}` : ""}`,
       user: byName, kind: "assign",
     });
     // notify the new set of officers
-    await notifyUsers(conn, await userIdsForOfficers(conn, officerIds), { icon: "info", title: `ได้รับมอบหมายเคส (เปลี่ยนผู้รับผิดชอบ): ${c.title}`, caseId: id });
+    await notifyUsers(conn, userIds, { icon: "info", title: `ได้รับมอบหมายเคส (เปลี่ยนผู้รับผิดชอบ): ${c.title}`, caseId: id });
     await conn.commit();
   } catch (e) {
     await conn.rollback();
@@ -788,8 +798,34 @@ async function cancelCase(id, reason, byName) {
     await conn.query("UPDATE cases SET status_code = '08', cancel_reason = ? WHERE id = ?", [reason || null, id]);
     await addTimeline(conn, id, { title: `ยกเลิกเคส${reason ? ` — ${reason}` : ""}`, user: byName, kind: "close" });
     // the creator and any assignees are the people affected by a cancellation
-    const cancelRecipients = [c.createdByUserId, ...await userIdsForOfficers(conn, c.assignees)];
+    const cancelRecipients = [c.createdByUserId, ...c.assignees];
     await notifyUsers(conn, cancelRecipients, { icon: "danger", title: `เคส ${c.etracking} ถูกยกเลิก`, caseId: id });
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  return getCaseById(id);
+}
+
+// Head/admin extends this case's SLA by N days (cumulative). The extension widens
+// every stage window (see sla.service caseSlaSnapshot), so an overdue-locked case
+// becomes workable again with a real, still-counting deadline — unlike unlockCase,
+// which lifts the lock permanently.
+async function extendSla(id, days, reason, user) {
+  const c = await fetchOr404(id);
+  if (sla.CLOSED.includes(c.status) || c.closed) { const e = new Error("เคสนี้ปิด/จบแล้ว — ไม่ต้องขยายกำหนด"); e.status = 409; throw e; }
+  const n = Number(days);
+  if (!Number.isInteger(n) || n < 1 || n > 365) { const e = new Error("จำนวนวันที่ขยายต้องเป็นจำนวนเต็ม 1–365 วัน"); e.status = 400; throw e; }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query("UPDATE cases SET sla_extension_days = sla_extension_days + ? WHERE id = ?", [n, id]);
+    const total = (c.slaExtensionDays || 0) + n;
+    await addTimeline(conn, id, {
+      title: `ขยายกำหนด SLA +${n} วัน (รวมขยาย ${total} วัน)${reason ? ` — ${reason}` : ""}`,
+      user: user.name, kind: "decision",
+    });
+    // the people working the case should know the clock moved
+    const recipients = [...c.assignees, c.createdByUserId];
+    await notifyUsers(conn, recipients, { icon: "info", title: `เคส ${c.etracking} ได้รับการขยายกำหนด SLA +${n} วัน`, caseId: id });
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -974,5 +1010,5 @@ module.exports = {
   assignCase, reassignCase, saveInvestigation, addInvestigationEvent, decision,
   saveBoard, applyBoardResolution, savePayment, closeFineCase,
   addFollowup, closeFollowupCase,
-  cancelCase, unlockCase, returnCase, submitCase, importCases,
+  cancelCase, unlockCase, extendSla, returnCase, submitCase, importCases,
 };

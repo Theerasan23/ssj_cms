@@ -94,7 +94,7 @@ export function AppProvider({ children }) {
   }), [loadNotifications, loadMaster, update]);
 
   const role = useMemo(() => (user ? {
-    id: user.roleId, userId: user.userId, name: user.name, role: user.role, initials: user.initials, desc: user.desc, officerId: user.officerId,
+    id: user.roleId, userId: user.userId, name: user.name, role: user.role, initials: user.initials, desc: user.desc,
   } : null), [user]);
 
   const cms = useMemo(() => makeCms(master), [master]);

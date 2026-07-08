@@ -19,13 +19,23 @@ function asArray(v) {
   return Array.isArray(v) ? v : String(v).split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-// Workflow writes are restricted to head/admin or the case creator.
+// Workflow writes:
+//  - head/admin: always
+//  - the assigned เจ้าหน้าที่ดำเนินการ (user accounts): they drive every step after assignment
+//  - the creator (เจ้าหน้าที่พัสดุ): only while the case is still pending approval (01)
+//  - เจ้าหน้าที่ค่าปรับ (role fine): only on the fine stage (04)
 async function requireCaseActor(req, res, next) {
   try {
     const c = await cases.getCaseById(req.params.id);
     if (!c) return res.status(404).json({ error: "ไม่พบเคส" });
-    if (!["head", "admin"].includes(req.user.roleId) && c.createdByUserId !== req.user.userId) {
-      return res.status(403).json({ error: "เฉพาะหัวหน้า แอดมิน หรือเจ้าหน้าที่ผู้สร้างเคสเท่านั้น" });
+    const u = req.user;
+    const allowed =
+      ["head", "admin"].includes(u.roleId) ||
+      c.assignees.includes(u.userId) ||
+      (c.createdByUserId === u.userId && c.status === "01") ||
+      (u.roleId === "fine" && c.status === "04");
+    if (!allowed) {
+      return res.status(403).json({ error: "เฉพาะหัวหน้า/แอดมิน เจ้าหน้าที่ที่ได้รับมอบหมาย หรือเจ้าหน้าที่ค่าปรับ (เฉพาะขั้นชำระค่าปรับ) เท่านั้น" });
     }
     next();
   } catch (e) { next(e); }
@@ -43,7 +53,7 @@ router.get("/", async (req, res, next) => {
       page: Number(req.query.page) || 1,
       pageSize: Number(req.query.pageSize) || 20,
     };
-    const currentRole = { id: req.user.roleId, userId: req.user.userId, officerId: req.user.officerId };
+    const currentRole = { id: req.user.roleId, userId: req.user.userId };
     res.json(await cases.listCases(filters, currentRole));
   } catch (e) { next(e); }
 });
@@ -61,8 +71,8 @@ router.get("/:id", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// POST /api/cases — create (officer/head/admin)
-router.post("/", requireRole("officer", "head", "admin"), async (req, res, next) => {
+// POST /api/cases — create (เจ้าหน้าที่พัสดุ; head/admin as backstop)
+router.post("/", requireRole("supply", "head", "admin"), async (req, res, next) => {
   try {
     const id = await cases.createCase(req.body || {}, req.user);
     const c = await cases.getCaseById(id);
@@ -73,8 +83,9 @@ router.post("/", requireRole("officer", "head", "admin"), async (req, res, next)
   }
 });
 
-// PATCH /api/cases/:id — edit a pending case (creator or head/admin)
-router.patch("/:id", requireRole("officer", "head", "admin"), async (req, res, next) => {
+// PATCH /api/cases/:id — edit a pending case (service enforces creator-only;
+// "officer" kept for legacy cases created before the supply role existed)
+router.patch("/:id", requireRole("supply", "officer", "head", "admin"), async (req, res, next) => {
   try {
     res.json(await cases.updateCase(req.params.id, req.body || {}, req.user));
   } catch (e) {
@@ -83,21 +94,26 @@ router.patch("/:id", requireRole("officer", "head", "admin"), async (req, res, n
   }
 });
 
-// POST /api/cases/:id/assign (head/admin)
+// assignees are user ids (บัญชีเจ้าหน้าที่ดำเนินการ); officerIds accepted as a legacy alias
+function assigneeIdsFrom(body) {
+  return ((body || {}).assigneeIds || (body || {}).officerIds || []).map(Number).filter(Number.isFinite);
+}
+
+// POST /api/cases/:id/assign (head/admin) — approve + hand the case to เจ้าหน้าที่ดำเนินการ
 router.post("/:id/assign", requireRole("head", "admin"), async (req, res, next) => {
   try {
-    const { officerIds = [], note = "" } = req.body || {};
-    if (!officerIds.length) return res.status(400).json({ error: "กรุณาเลือกเจ้าหน้าที่อย่างน้อย 1 คน" });
-    res.json(await cases.assignCase(req.params.id, officerIds, req.user.roleId, req.user.name, note));
+    const ids = assigneeIdsFrom(req.body);
+    if (!ids.length) return res.status(400).json({ error: "กรุณาเลือกเจ้าหน้าที่อย่างน้อย 1 คน" });
+    res.json(await cases.assignCase(req.params.id, ids, req.user.roleId, req.user.name, (req.body || {}).note || ""));
   } catch (e) { next(e); }
 });
 
 // POST /api/cases/:id/reassign (head/admin) — change officers on an active case, status unchanged
 router.post("/:id/reassign", requireRole("head", "admin"), async (req, res, next) => {
   try {
-    const { officerIds = [], note = "" } = req.body || {};
-    if (!officerIds.length) return res.status(400).json({ error: "กรุณาเลือกเจ้าหน้าที่อย่างน้อย 1 คน" });
-    res.json(await cases.reassignCase(req.params.id, officerIds, req.user.roleId, req.user.name, note));
+    const ids = assigneeIdsFrom(req.body);
+    if (!ids.length) return res.status(400).json({ error: "กรุณาเลือกเจ้าหน้าที่อย่างน้อย 1 คน" });
+    res.json(await cases.reassignCase(req.params.id, ids, req.user.roleId, req.user.name, (req.body || {}).note || ""));
   } catch (e) { next(e); }
 });
 
@@ -137,7 +153,8 @@ router.post("/:id/board/apply", requireRole("officer", "head", "admin"), require
 });
 
 // POST /api/cases/:id/payment { fineId, paidDate, amount } — amount may be partial
-router.post("/:id/payment", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
+// (role "fine" = เจ้าหน้าที่ค่าปรับ works this stage; requireCaseActor limits them to status 04)
+router.post("/:id/payment", requireRole("officer", "fine", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     const { fineId, paidDate, amount } = req.body || {};
     if (!fineId || !paidDate || amount == null) return res.status(400).json({ error: "ข้อมูลการชำระไม่ครบ" });
@@ -153,7 +170,7 @@ router.post("/:id/followup", requireRole("officer", "head", "admin"), requireCas
 });
 
 // POST /api/cases/:id/close — 04 (ค่าปรับครบ) → 05; follow-up statuses 06/07/09 → explicit close
-router.post("/:id/close", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
+router.post("/:id/close", requireRole("officer", "fine", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     const c = await cases.getCaseById(req.params.id);
     if (c && ["06", "07", "09"].includes(c.status)) {
@@ -179,8 +196,17 @@ router.post("/:id/unlock", requireRole("admin"), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// POST /api/cases/:id/extend { days, reason }  (head/admin) → extend the SLA window
+// of this case by N days (cumulative) — the deadline keeps counting, unlike /unlock
+router.post("/:id/extend", requireRole("head", "admin"), async (req, res, next) => {
+  try {
+    const { days, reason = "" } = req.body || {};
+    res.json(await cases.extendSla(req.params.id, days, reason, req.user));
+  } catch (e) { next(e); }
+});
+
 // POST /api/cases/:id/submit — creator submits a draft for head approval
-router.post("/:id/submit", requireRole("officer", "head", "admin"), async (req, res, next) => {
+router.post("/:id/submit", requireRole("supply", "officer", "head", "admin"), async (req, res, next) => {
   try {
     res.json(await cases.submitCase(req.params.id, req.user));
   } catch (e) { next(e); }
@@ -195,7 +221,7 @@ router.post("/:id/return", requireRole("head", "admin"), async (req, res, next) 
 
 // ---- Attachments ----
 // POST /api/cases/:id/attachments  (multipart "files") — upload real files
-router.post("/:id/attachments", requireRole("officer", "head", "admin"), requireCaseActor, upload.array("files", 10), async (req, res, next) => {
+router.post("/:id/attachments", requireRole("supply", "officer", "fine", "head", "admin"), requireCaseActor, upload.array("files", 10), async (req, res, next) => {
   try {
     await cases.getCaseById(req.params.id).then((c) => { if (!c) { const e = new Error("ไม่พบเคส"); e.status = 404; throw e; } });
     await attachments.saveAttachments(req.params.id, req.files, req.user.name);
@@ -215,7 +241,7 @@ router.get("/:id/attachments/:attId", async (req, res, next) => {
 });
 
 // DELETE /api/cases/:id/attachments/:attId
-router.delete("/:id/attachments/:attId", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
+router.delete("/:id/attachments/:attId", requireRole("supply", "officer", "fine", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     await attachments.deleteAttachment(req.params.id, req.params.attId);
     res.json(await cases.getCaseById(req.params.id));

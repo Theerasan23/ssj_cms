@@ -1,6 +1,6 @@
 const { verify } = require("../auth/jwt");
 
-// Reads the Bearer token and attaches req.user = { roleId, officerId, name, username }
+// Reads the Bearer token and attaches req.user = { roleId, userId, name, username }
 function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
@@ -13,7 +13,7 @@ function requireAuth(req, res, next) {
   }
 }
 
-// Restricts a route to certain role ids (admin/head/officer/exec)
+// Restricts a route to certain role ids (admin/head/supply/officer/fine/exec)
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.roleId)) {

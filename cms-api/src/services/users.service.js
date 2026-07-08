@@ -3,8 +3,8 @@ const bcrypt = require("bcryptjs");
 
 // Current-user lookup in the same shape the login/session uses (mirrors auth.routes mapUser).
 const AUTH_USER_SELECT = `
-  SELECT u.id, u.username, u.role_id, u.name, u.initials, u.email, u.phone, u.officer_id, u.active,
-         r.name AS role_name, r.role_label, r.initials AS role_initials, r.descr, r.officer_id AS role_officer_id
+  SELECT u.id, u.username, u.role_id, u.name, u.initials, u.email, u.phone, u.active,
+         r.name AS role_name, r.role_label, r.initials AS role_initials, r.descr
   FROM users u JOIN roles r ON r.id = u.role_id`;
 async function getAuthUserById(id) {
   const [rows] = await pool.query(`${AUTH_USER_SELECT} WHERE u.id = ?`, [id]);
@@ -12,14 +12,14 @@ async function getAuthUserById(id) {
   const u = rows[0];
   return {
     roleId: u.role_id, userId: u.id, name: u.name || u.role_name, role: u.role_label,
-    initials: u.initials || u.role_initials, desc: u.descr, officerId: u.officer_id || u.role_officer_id,
+    initials: u.initials || u.role_initials, desc: u.descr,
     username: u.username, email: u.email || "", phone: u.phone || "", active: !!u.active,
   };
 }
 
 async function listUsers() {
   const [rows] = await pool.query(
-    `SELECT u.id, u.username, u.role_id AS roleId, u.name, u.initials, u.email, u.phone, u.active, u.officer_id AS officerId, u.last_login AS lastLogin, r.role_label AS roleLabel
+    `SELECT u.id, u.username, u.role_id AS roleId, u.name, u.initials, u.email, u.phone, u.active, u.last_login AS lastLogin, r.role_label AS roleLabel
      FROM users u JOIN roles r ON r.id = u.role_id ORDER BY u.id`
   );
   return rows.map((u) => ({ ...u, active: !!u.active }));
@@ -48,19 +48,19 @@ async function createUser(body) {
   const initials = body.initials || initialsFromName(name);
   try {
     const [res] = await pool.query(
-      "INSERT INTO users (username, password_hash, role_id, name, initials, email, phone, officer_id, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)",
-      [username, bcrypt.hashSync(password, 10), roleId, name, initials, body.email || null, body.phone || null, body.officerId || null]
+      "INSERT INTO users (username, password_hash, role_id, name, initials, email, phone, active) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+      [username, bcrypt.hashSync(password, 10), roleId, name, initials, body.email || null, body.phone || null]
     );
     return { ok: true, id: res.insertId, username, password };
   } catch (e) {
     if (e.code === "ER_DUP_ENTRY") { const x = new Error("username นี้มีอยู่แล้ว"); x.status = 409; throw x; }
-    if (e.code === "ER_NO_REFERENCED_ROW_2") { const x = new Error("บทบาทหรือเจ้าหน้าที่อ้างอิงไม่ถูกต้อง"); x.status = 400; throw x; }
+    if (e.code === "ER_NO_REFERENCED_ROW_2") { const x = new Error("บทบาทที่เลือกไม่ถูกต้อง"); x.status = 400; throw x; }
     throw e;
   }
 }
 
 async function updateUser(id, body) {
-  const map = { name: "name", initials: "initials", email: "email", phone: "phone", roleId: "role_id", officerId: "officer_id" };
+  const map = { name: "name", initials: "initials", email: "email", phone: "phone", roleId: "role_id" };
   const sets = [], vals = [];
   for (const [key, col] of Object.entries(map)) {
     if (body[key] !== undefined) { sets.push(`${col} = ?`); vals.push(body[key] || null); }

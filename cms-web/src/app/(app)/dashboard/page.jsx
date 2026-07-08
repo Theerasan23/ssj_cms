@@ -56,7 +56,7 @@ function HeadDashboard({ cases, reload }) {
     const c = cases.find((x) => x.id === quickAssignFor);
     if (cms.isCaseLocked(c)) { toast.push({ kind: "danger", title: "เคสถูกล็อก", msg: "เกิน SLA — ไม่สามารถมอบหมายได้" }); setQuickAssignFor(null); return; }
     try {
-      await api.post(`/cases/${c.id}/assign`, { officerIds: ids, note });
+      await api.post(`/cases/${c.id}/assign`, { assigneeIds: ids, note });
       setQuickAssignFor(null);
       toast.push({ kind: "success", title: "อนุมัติและมอบหมายสำเร็จ", msg: "เจ้าหน้าที่ได้รับ notification แล้ว" });
       reload();
@@ -259,7 +259,9 @@ function OfficerDashboard({ cases }) {
               <option value="90">90 วันล่าสุด</option><option value="365">ปีนี้</option>
             </select>
             <button className="btn btn-outline" onClick={() => router.push("/reports")}><Icon name="chart" size={16} /> ดู Dashboard เต็ม</button>
-            <button className="btn btn-primary" onClick={() => router.push("/cases/new")}><Icon name="plus" size={16} /> สร้างเคสใหม่</button>
+            {["supply", "head", "admin"].includes(role.id) && (
+              <button className="btn btn-primary" onClick={() => router.push("/cases/new")}><Icon name="plus" size={16} /> สร้างเคสใหม่</button>
+            )}
           </div>
         </div>
       </div>
