@@ -61,11 +61,11 @@ const MASTER = {
   // เจ้าหน้าที่ค่าปรับ (เฉพาะขั้นชำระค่าปรับ)
   roles: [
     { id: "admin",   label: "Admin",                 initials: "AD", desc: "ผู้ดูแลระบบ — จัดการ master data ผู้ใช้และสิทธิ์ ปลดล็อกเคส" },
-    { id: "head",    label: "หัวหน้ากลุ่มงาน คบส.",  initials: "หน", desc: "อนุมัติเคสและมอบหมายเจ้าหน้าที่ดำเนินการ" },
+    { id: "head",    label: "หัวหน้ากลุ่มงาน คบส.",  initials: "หน", desc: "อนุมัติเคส มอบหมายเจ้าหน้าที่ดำเนินการ และขยายกำหนด SLA" },
     { id: "supply",  label: "เจ้าหน้าที่พัสดุ",       initials: "พด", desc: "สร้างเคสใหม่และส่งขออนุมัติหัวหน้ากลุ่มงาน" },
     { id: "officer", label: "เจ้าหน้าที่ดำเนินการ",   initials: "จด", desc: "รับมอบหมายจากหัวหน้า ตรวจสอบข้อเท็จจริง บันทึกมติ และติดตามผล" },
     { id: "fine",    label: "เจ้าหน้าที่ค่าปรับ",     initials: "คป", desc: "บันทึกการชำระค่าปรับและปิดเคสขั้นเปรียบเทียบปรับ" },
-    { id: "exec",    label: "ผู้บริหาร / นพ.สสจ.",    initials: "ผบ", desc: "ดูภาพรวมและรายงาน (view only)" },
+    { id: "exec",    label: "ผู้บริหาร / นพ.สสจ.",    initials: "ผบ", desc: "ดูภาพรวมและรายงาน (ดูอย่างเดียว)" },
   ],
   // login accounts — assignment targets user accounts (role "officer") directly
   users: [

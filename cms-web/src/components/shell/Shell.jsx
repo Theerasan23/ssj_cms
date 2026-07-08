@@ -61,14 +61,10 @@ export function Shell({ children }) {
 function Sidebar({ items, pathname, mobileNavOpen, setMobileNavOpen }) {
   const router = useRouter();
   const { actions } = useApp();
-  const [activeBadge, setActiveBadge] = useState(0);
   const [approvalBadge, setApprovalBadge] = useState(0);
 
   useEffect(() => {
     let alive = true;
-    api.get("/cases?status=01,02,03,04&pageSize=1")
-      .then((r) => { if (alive) setActiveBadge(r.total); })
-      .catch(() => {});
     api.get("/cases?status=01&pageSize=1")
       .then((r) => { if (alive) setApprovalBadge(r.total); })
       .catch(() => {});
@@ -93,7 +89,6 @@ function Sidebar({ items, pathname, mobileNavOpen, setMobileNavOpen }) {
             <button key={it.key} className={`nav-item ${isActive(pathname, it) ? "active" : ""}`} onClick={() => go(it.href)}>
               <Icon className="nav-icon" name={it.icon} />
               <span className="nav-label">{it.label}</span>
-              {it.key === "cases" && activeBadge > 0 && <span className="nav-badge">{activeBadge}</span>}
               {it.key === "approvals" && approvalBadge > 0 && <span className="nav-badge">{approvalBadge}</span>}
             </button>
           ))}
