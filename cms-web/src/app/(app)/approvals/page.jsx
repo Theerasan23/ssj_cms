@@ -165,7 +165,7 @@ export default function ApprovalsPage() {
                 <div key={c.id} className={`approval-card ${locked ? "is-locked" : ""}`}>
                   <div>
                     <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                      <span className="ap-tracking">{c.etracking}</span>
+                      <span className="ap-tracking">{c.etracking || "—"}</span>
                       <StatusBadge code={c.status} size="sm" />
                       {locked ? <span className="lock-pill"><Icon name="lock" size={10} /> ล็อก — เกิน SLA</span> : <SLABadge sla={sla} />}
                       {c.bountyAmount && <span className="chip accent" style={{ fontSize: 10.5 }}>💰 สินบนนำจับ</span>}
@@ -210,7 +210,7 @@ export default function ApprovalsPage() {
               <tbody>
                 {returnedList.map((c) => (
                   <tr key={c.id} onClick={() => router.push(`/cases/${c.id}`)}>
-                    <td className="num">{c.etracking}</td>
+                    <td className="num">{c.etracking || "—"}</td>
                     <td style={{ fontWeight: 500, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</td>
                     <td className="small muted" style={{ maxWidth: 300 }}>{c.returnReason || "—"}</td>
                     <td><SLABadge sla={cms.caseSla(c)} /></td>
@@ -231,7 +231,7 @@ export default function ApprovalsPage() {
                   const locked = cms.isCaseLocked(c);
                   return (
                     <tr key={c.id} onClick={() => router.push(`/cases/${c.id}`)}>
-                      <td className="num">{c.etracking}</td>
+                      <td className="num">{c.etracking || "—"}</td>
                       <td style={{ fontWeight: 500, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</td>
                       <td>{c.assignees.length === 0 ? <span className="muted small">—</span> : <AvatarStack names={c.assignees.map((id) => cms.officerName(id))} max={3} size="sm" />}</td>
                       <td className="muted small">{cms.fmtThaiDate(c.assignedAt)}</td>
@@ -269,7 +269,7 @@ export default function ApprovalsPage() {
                 <div key={c.id} className="approval-card is-locked">
                   <div>
                     <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                      <span className="ap-tracking">{c.etracking}</span>
+                      <span className="ap-tracking">{c.etracking || "—"}</span>
                       <StatusBadge code={c.status} size="sm" />
                       <span className="lock-pill"><Icon name="lock" size={10} /> ล็อก — เกิน SLA</span>
                       {c.bountyAmount && <span className="chip accent" style={{ fontSize: 10.5 }}>💰 สินบนนำจับ</span>}
@@ -309,7 +309,7 @@ export default function ApprovalsPage() {
       {extendFor && <ExtendSlaModal c={cases.find((x) => x.id === extendFor)} onClose={() => setExtendFor(null)} onSave={doExtend} />}
       {reassignFor && <AssignModal mode="reassign" c={cases.find((x) => x.id === reassignFor)} onClose={() => setReassignFor(null)} onSave={doReassign} />}
       {returnFor && (
-        <Modal open onClose={() => setReturnFor(null)} title="ส่งกลับให้เจ้าหน้าที่แก้ไข" sub={(cases.find((x) => x.id === returnFor) || {}).etracking}
+        <Modal open onClose={() => setReturnFor(null)} title="ส่งกลับให้เจ้าหน้าที่แก้ไข" sub={(() => { const t = cases.find((x) => x.id === returnFor) || {}; return t.etracking || t.title; })()}
           footer={<>
             <button className="btn btn-outline" onClick={() => setReturnFor(null)}>ปิด</button>
             <button className="btn btn-primary" onClick={doReturn}><Icon name="arrow-left" size={14} /> ยืนยันส่งกลับ</button>

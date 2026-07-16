@@ -12,7 +12,7 @@ export function AssignModal({ c, onClose, onSave, mode = "assign" }) {
   const [selected, setSelected] = useState(reassign ? c.assignees || [] : []);
   const [note, setNote] = useState("");
   return (
-    <Modal open onClose={onClose} title={reassign ? "เปลี่ยน / มอบหมายเจ้าหน้าที่ใหม่" : "มอบหมายเจ้าหน้าที่"} sub={c.etracking + " · " + c.title}
+    <Modal open onClose={onClose} title={reassign ? "เปลี่ยน / มอบหมายเจ้าหน้าที่ใหม่" : "มอบหมายเจ้าหน้าที่"} sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
       footer={<>
         <button className="btn btn-outline" onClick={onClose}>ยกเลิก</button>
         <button className="btn btn-primary" disabled={selected.length === 0} onClick={() => onSave(selected, note)}>
@@ -60,7 +60,7 @@ export function ExtendSlaModal({ c, onClose, onSave }) {
   }
 
   return (
-    <Modal open onClose={onClose} title="ขยายกำหนด SLA" sub={c.etracking + " · " + c.title}
+    <Modal open onClose={onClose} title="ขยายกำหนด SLA" sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
       footer={<>
         <button className="btn btn-outline" onClick={onClose}>ยกเลิก</button>
         <button className="btn btn-primary" disabled={!valid || saving} onClick={save}>
@@ -85,6 +85,39 @@ export function ExtendSlaModal({ c, onClose, onSave }) {
   );
 }
 
+// ---------- Decision paths (shared) ----------
+// การ์ด "เลือกแนวทาง" 4 ทางเลือก — ใช้ใน modal ตรวจสอบข้อเท็จจริง, มติคณะกรรมการ,
+// เปรียบเทียบปรับ และแจ้งความ/ดำเนินคดี (ขั้นที่เคสอยู่แล้วจะถูกปิดปุ่มไว้)
+// withReason แสดงช่องเหตุผล · requireReason บังคับกรอกก่อนเลือก — เหตุผลถูกบันทึกลง timeline
+export function DecisionPathCard({ title = "เลือกแนวทางหลังตรวจสอบ", sub, onChoose, disabledPaths = [], withReason = false, requireReason = false }) {
+  const [reason, setReason] = useState("");
+  const missing = requireReason && !reason.trim();
+  const dis = (p) => disabledPaths.includes(p) || missing;
+  const tip = (p) => disabledPaths.includes(p) ? "เคสอยู่ในขั้นตอนนี้อยู่แล้ว" : missing ? "กรุณาระบุเหตุผลก่อนเลือกแนวทาง" : undefined;
+  const choose = (p) => onChoose(p, reason.trim());
+  return (
+    <div className="card" style={{ background: "var(--accent-100)", borderColor: "var(--accent-600)" }}>
+      <div className="card-body" style={{ padding: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "var(--accent-700)", marginBottom: 4 }}>{title}</div>
+        <div className="small" style={{ marginBottom: 12, color: "var(--accent-700)" }}>{sub}</div>
+        {withReason && (
+          <div style={{ marginBottom: 12 }}>
+            <FormField label="เหตุผล" req={requireReason} hint={requireReason ? "ระบุเหตุผลก่อน จึงจะเลือกแนวทางได้ — เหตุผลจะถูกบันทึกลง timeline" : "บันทึกลง timeline (ถ้ามี)"}>
+              <textarea className="textarea" rows={2} placeholder="เช่น ผู้ถูกร้องไม่มาชำระค่าปรับภายในกำหนด" value={reason} onChange={(e) => setReason(e.target.value)} />
+            </FormField>
+          </div>
+        )}
+        <div className="form-grid cols-2">
+          <button className="btn btn-primary btn-lg" disabled={dis("board")} title={tip("board")} onClick={() => choose("board")}><Icon name="users" size={16} /> เข้าคณะกรรมการ</button>
+          <button className="btn btn-outline btn-lg" disabled={dis("forward")} title={tip("forward")} onClick={() => choose("forward")}><Icon name="send" size={16} /> ส่งต่อหน่วยงาน</button>
+          <button className="btn btn-success btn-lg" disabled={dis("stop")} title={tip("stop")} onClick={() => choose("stop")}><Icon name="check-circle" size={16} /> เสนอนายแพทย์ยุติ</button>
+          <button className="btn btn-danger btn-lg" disabled={dis("police")} title={tip("police")} onClick={() => choose("police")}><Icon name="gavel" size={16} /> แจ้งความ/ดำเนินคดี</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Investigation ----------
 export function InvestigationModal({ c, onClose, onAddEvent, onChoose }) {
   const { cms } = useApp();
@@ -106,7 +139,7 @@ export function InvestigationModal({ c, onClose, onAddEvent, onChoose }) {
   }
 
   return (
-    <Modal open onClose={onClose} size="lg" title="บันทึกการตรวจสอบข้อเท็จจริง" sub={c.etracking + " · " + c.title}
+    <Modal open onClose={onClose} size="lg" title="บันทึกการตรวจสอบข้อเท็จจริง" sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
       footer={<button className="btn btn-outline" onClick={onClose}>ปิด</button>}>
       <div className="stack">
         <div className="row" style={{ padding: 12, background: "var(--primary-50)", borderRadius: 8, fontSize: 12.5, justifyContent: "space-between" }}>
@@ -156,20 +189,7 @@ export function InvestigationModal({ c, onClose, onAddEvent, onChoose }) {
           </div>
         </div>
 
-        {has && (
-          <div className="card" style={{ background: "var(--accent-100)", borderColor: "var(--accent-600)" }}>
-            <div className="card-body" style={{ padding: 16 }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "var(--accent-700)", marginBottom: 4 }}>เลือกแนวทางหลังตรวจสอบ</div>
-              <div className="small" style={{ marginBottom: 12, color: "var(--accent-700)" }}>ปลดล็อกขั้นถัดไป — กรุณาเลือก 1 ใน 4 ทางเลือก</div>
-              <div className="form-grid cols-2">
-                <button className="btn btn-primary btn-lg" onClick={() => onChoose("board")}><Icon name="users" size={16} /> เข้าคณะกรรมการ</button>
-                <button className="btn btn-outline btn-lg" onClick={() => onChoose("forward")}><Icon name="send" size={16} /> ส่งต่อหน่วยงาน</button>
-                <button className="btn btn-success btn-lg" onClick={() => onChoose("stop")}><Icon name="check-circle" size={16} /> เสนอนายแพทย์ยุติ</button>
-                <button className="btn btn-danger btn-lg" onClick={() => onChoose("police")}><Icon name="gavel" size={16} /> แจ้งความ/ดำเนินคดี</button>
-              </div>
-            </div>
-          </div>
-        )}
+        {has && <DecisionPathCard sub="ปลดล็อกขั้นถัดไป — กรุณาเลือก 1 ใน 4 ทางเลือก" onChoose={onChoose} />}
       </div>
     </Modal>
   );
@@ -184,7 +204,7 @@ const FOLLOWUP_UI = {
 
 // Repeatable progress records for a follow-up case — the case stays in its status
 // until the officer explicitly closes it (09 then resolves to 05 ยุติคดี).
-export function FollowupModal({ c, onClose, onAdd, onCloseCase }) {
+export function FollowupModal({ c, onClose, onAdd, onCloseCase, onChoose }) {
   const { cms } = useApp();
   const ui = FOLLOWUP_UI[c.status] || FOLLOWUP_UI["06"];
   const [date, setDate] = useState(cms.TODAY);
@@ -203,7 +223,7 @@ export function FollowupModal({ c, onClose, onAdd, onCloseCase }) {
   }
 
   return (
-    <Modal open onClose={onClose} size="lg" title={ui.title} sub={c.etracking + " · " + c.title}
+    <Modal open onClose={onClose} size="lg" title={ui.title} sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
       footer={<button className="btn btn-outline" onClick={onClose}>ปิด</button>}>
       <div className="stack">
         <div style={{ padding: 12, background: "var(--primary-50)", borderRadius: 8, fontSize: 12.5 }}>
@@ -249,6 +269,13 @@ export function FollowupModal({ c, onClose, onAdd, onCloseCase }) {
             </div>
           </div>
         </div>
+
+        {c.status === "07" && onChoose && (
+          <DecisionPathCard
+            title="เลือกแนวทางดำเนินการต่อ"
+            sub="กรณีต้องนำเคสกลับเข้าที่ประชุมคณะกรรมการ หรือเปลี่ยนแนวทางอื่น — กรุณาระบุเหตุผล · สถานะเคสจะเปลี่ยนตามแนวทางที่เลือก"
+            onChoose={onChoose} disabledPaths={["police"]} withReason requireReason />
+        )}
 
         <div className="card" style={{ background: "var(--accent-100)", borderColor: "var(--accent-600)" }}>
           <div className="card-body" style={{ padding: 16 }}>
@@ -303,7 +330,7 @@ export function fmtTimestamp(cms, dt) {
 // status; the officer applies the latest resolution explicitly via onApply.
 // Saving without a resolution = pending proposal (อยู่ระหว่างรอเข้าคณะกรรมการ, SLA นับต่อ);
 // the next save fills that pending entry in.
-export function BoardModal({ c, onClose, onSaveMeeting, onApply }) {
+export function BoardModal({ c, onClose, onSaveMeeting, onApply, onChoose }) {
   const { cms } = useApp();
   const meetings = c.boardMeetings || [];
   const latest = meetings.length ? meetings[meetings.length - 1] : null;
@@ -379,7 +406,7 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply }) {
   const applyBlocked = latest && FINE_RESOLUTIONS.includes(latest.resolution) && (!latest.sections || latest.sections.length === 0);
 
   return (
-    <Modal open onClose={onClose} size="lg" title="บันทึกมติคณะกรรมการ" sub={c.etracking + " · " + c.title}
+    <Modal open onClose={onClose} size="lg" title="บันทึกมติคณะกรรมการ" sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
       footer={<button className="btn btn-outline" onClick={onClose}>ปิด</button>}>
       <div className="stack">
         <div className="row" style={{ padding: 12, background: "var(--primary-50)", borderRadius: 8, fontSize: 12.5, justifyContent: "space-between" }}>
@@ -509,6 +536,12 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply }) {
             </div>
           </div>
         )}
+
+        {onChoose && (
+          <DecisionPathCard
+            sub="เปลี่ยนแนวทางดำเนินการของเคสได้ทันทีโดยไม่ต้องรอมติ — สถานะเคสจะเปลี่ยนตามแนวทางที่เลือก"
+            onChoose={onChoose} disabledPaths={["board"]} withReason />
+        )}
       </div>
     </Modal>
   );
@@ -517,7 +550,7 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply }) {
 // ---------- Fine / Payment ----------
 // Supports partial payments: each save adds to paidAmount; remaining = amount - paidAmount.
 // The case is closed by an explicit officer action (onCloseCase) once everything is paid.
-export function FineModal({ c, onClose, onSave, onCloseCase }) {
+export function FineModal({ c, onClose, onSave, onCloseCase, onChoose }) {
   const { cms } = useApp();
   const [fineId, setFineId] = useState(null);
   const [paidDate, setPaidDate] = useState(cms.TODAY);
@@ -545,7 +578,7 @@ export function FineModal({ c, onClose, onSave, onCloseCase }) {
   }
 
   return (
-    <Modal open onClose={onClose} size="lg" title="บันทึกการเปรียบเทียบปรับ" sub={c.etracking + " · " + c.title}
+    <Modal open onClose={onClose} size="lg" title="บันทึกการเปรียบเทียบปรับ" sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
       footer={<>
         <button className="btn btn-outline" onClick={onClose}>ปิด</button>
         {!allPaid && (
@@ -634,6 +667,13 @@ export function FineModal({ c, onClose, onSave, onCloseCase }) {
               <FileUpload files={files} onChange={setFiles} />
             </FormField>
           </>
+        )}
+
+        {!allPaid && onChoose && (
+          <DecisionPathCard
+            title="เลือกแนวทางดำเนินการต่อ"
+            sub="กรณีผู้ถูกร้องไม่ชำระค่าปรับ — นำเคสเข้าคณะกรรมการ หรือแจ้งความ/ดำเนินคดีต่อได้ กรุณาระบุเหตุผล · สถานะเคสจะเปลี่ยนตามแนวทางที่เลือก"
+            onChoose={onChoose} withReason requireReason />
         )}
       </div>
     </Modal>

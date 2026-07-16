@@ -18,6 +18,7 @@ cms-web/.env.local
 !**/*.env.example
 !cms-api/.env.example
 !cms-web/.env.local.example
+test import Data.xlsx
 
 # ===== Build output =====
 .next/

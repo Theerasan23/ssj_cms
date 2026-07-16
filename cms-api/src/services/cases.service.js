@@ -96,6 +96,7 @@ function buildShape(r, rel) {
     // 05/08 are terminal; 06/07/09 count as closed only after the explicit close action
     closed: ["05", "08"].includes(r.status_code) || r.closed_at != null,
     followups: rel.followups,
+    decisions: rel.decisions,
     attachments: rel.attachments,
     investigations: rel.investigations,
     // derived summary (earliest of each kind) — keeps SLA + step "done" logic working
@@ -136,6 +137,9 @@ async function attachRelations(rows) {
   const [followups] = await pool.query(
     `SELECT case_id, id, date, destination, detail, user_name AS user, created_at AS createdAt
      FROM case_followups WHERE case_id IN (${ph}) ORDER BY seq, id`, ids);
+  const [decisions] = await pool.query(
+    `SELECT case_id, id, path, from_status AS fromStatus, to_status AS toStatus, reason, user_name AS user, created_at AS createdAt
+     FROM case_decisions WHERE case_id IN (${ph}) ORDER BY seq, id`, ids);
   const [meetings] = await pool.query(
     `SELECT case_id, id, meeting_no AS meetingNo, year, meeting_date AS meetingDate, resolution, notes, created_at AS createdAt
      FROM case_board_meetings WHERE case_id IN (${ph}) ORDER BY seq, id`, ids);
@@ -161,12 +165,14 @@ async function attachRelations(rows) {
   const gTimeline = groupBy(timeline, "case_id");
   const gInv = groupBy(investigations, "case_id");
   const gFollowups = groupBy(followups, "case_id");
+  const gDecisions = groupBy(decisions, "case_id");
   const gMeetings = groupBy(meetings, "case_id");
 
   return rows.map((r) =>
     buildShape(r, {
       investigations: (gInv.get(r.id) || []).map((x) => ({ id: x.id, kind: x.kind, date: x.date, place: x.place || "", result: x.result || "" })),
       followups: (gFollowups.get(r.id) || []).map((x) => ({ id: x.id, date: x.date, destination: x.destination || "", detail: x.detail || "", user: x.user || "", createdAt: x.createdAt })),
+      decisions: (gDecisions.get(r.id) || []).map((x) => ({ id: x.id, path: x.path, fromStatus: x.fromStatus, toStatus: x.toStatus, reason: x.reason || "", user: x.user || "", createdAt: x.createdAt })),
       boardMeetings: (gMeetings.get(r.id) || []).map((m) => ({
         id: m.id, meetingNo: m.meetingNo, year: m.year, meetingDate: m.meetingDate,
         resolution: m.resolution || "", notes: m.notes || "", createdAt: m.createdAt,
@@ -311,7 +317,6 @@ async function assertAssignableUsers(conn, userIds) {
 function validateCreate(p) {
   const errors = [];
   const today = sla.TODAY();
-  if (!p.etracking) errors.push("กรุณากรอก E-tracking");
   if (!p.title || p.title.length < 5 || p.title.length > 200) errors.push("ชื่อกรณีต้องมี 5–200 ตัวอักษร");
   if (!p.letterNo) errors.push("กรุณากรอกเลขรับหนังสือ");
   if (!p.postNo) errors.push("กรุณากรอกเลขรับ POST");
@@ -332,6 +337,11 @@ function validateCreate(p) {
 
 function newCaseId() {
   return "case-" + Math.random().toString(36).slice(2, 8);
+}
+
+// Human-readable case reference for notifications — etracking is optional now
+function caseRef(c) {
+  return c.etracking || c.title;
 }
 
 async function fetchOr404(id) {
@@ -376,7 +386,7 @@ async function createCase(payload, user) {
         is_draft, created_by, created_by_user_id, created_at
       ) VALUES (?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?)`,
       [
-        id, payload.etracking, payload.letterNo, payload.letterDate || null, payload.postNo, payload.postDate || null, payload.title,
+        id, String(payload.etracking || "").trim() || null, payload.letterNo, payload.letterDate || null, payload.postNo, payload.postDate || null, payload.title,
         sourceId, payload.product || null, payload.productLicense || null,
         payload.bountyAmount || null,
         payload.bountyRequested ? 1 : 0, payload.bountyFirstName || null, payload.bountyLastName || null, payload.bountyNo || null,
@@ -468,23 +478,38 @@ async function saveInvestigation(id, p, byName) {
   return getCaseById(id);
 }
 
-async function decision(id, path, byName) {
-  await assertActionable(id, ["02"]);
+// Route the case down one of the 4 paths — from the investigation stage (02) or,
+// since the board/fine/police modals offer the same chooser, from 03/04/07 as well.
+// A mid-flow course change (from 04/07 — e.g. ผู้ถูกร้องไม่ชำระค่าปรับ) requires a reason.
+async function decision(id, path, reason, byName) {
+  const c = await assertActionable(id, ["02", "03", "04", "07"]);
   // forward/police/stop no longer close the case — they enter a follow-up status
   // where the officer keeps recording progress until the explicit close action
   const map = {
-    board: { status: "03", line: "เลือกแนวทาง: เข้ากรรมการ" },
-    forward: { status: "06", line: "เลือกแนวทาง: ส่งต่อหน่วยงานอื่น — ติดตามผลจนกว่าจะปิดเคส" },
-    stop: { status: "09", line: "เลือกแนวทาง: เสนอนายแพทย์ยุติเรื่อง — อยู่ระหว่างเสนอ" },
-    police: { status: "07", line: "เลือกแนวทาง: แจ้งความ/ดำเนินคดี — ติดตามผลจนกว่าจะปิดเคส" },
+    board: { status: "03", label: "เข้าคณะกรรมการ", line: "เลือกแนวทาง: เข้ากรรมการ" },
+    forward: { status: "06", label: "ส่งต่อหน่วยงาน", line: "เลือกแนวทาง: ส่งต่อหน่วยงานอื่น — ติดตามผลจนกว่าจะปิดเคส" },
+    stop: { status: "09", label: "เสนอนายแพทย์ยุติเรื่อง", line: "เลือกแนวทาง: เสนอนายแพทย์ยุติเรื่อง — อยู่ระหว่างเสนอ" },
+    police: { status: "07", label: "แจ้งความ/ดำเนินคดี", line: "เลือกแนวทาง: แจ้งความ/ดำเนินคดี — ติดตามผลจนกว่าจะปิดเคส" },
   };
   const d = map[path];
   if (!d) { const e = new Error("แนวทางไม่ถูกต้อง"); e.status = 400; throw e; }
+  if (d.status === c.status) { const e = new Error("เคสอยู่ในขั้นตอนนี้อยู่แล้ว"); e.status = 409; throw e; }
+  const why = String(reason || "").trim();
+  if (["04", "07"].includes(c.status) && !why) { const e = new Error("กรุณาระบุเหตุผลในการเปลี่ยนแนวทาง"); e.status = 400; throw e; }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     await conn.query("UPDATE cases SET status_code = ? WHERE id = ?", [d.status, id]);
-    await addTimeline(conn, id, { title: d.line, user: byName, kind: "decision" });
+    const [seqRow] = await conn.query("SELECT COALESCE(MAX(seq), -1) + 1 AS n FROM case_decisions WHERE case_id = ?", [id]);
+    await conn.query(
+      "INSERT INTO case_decisions (case_id, path, from_status, to_status, reason, user_name, seq) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [id, path, c.status, d.status, why || null, byName, seqRow[0].n]
+    );
+    await addTimeline(conn, id, { title: `${d.line}${why ? ` — เหตุผล: ${why}` : ""}`, user: byName, kind: "decision" });
+    // course change after the investigation stage → heads/admins should know
+    if (c.status !== "02") {
+      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคส ${caseRef(c)} เปลี่ยนแนวทาง: ${d.label}`, caseId: id });
+    }
     await conn.commit();
   } catch (e) {
     await conn.rollback();
@@ -540,7 +565,26 @@ async function closeFollowupCase(id, user) {
       await conn.query("UPDATE cases SET closed_at = ? WHERE id = ?", [today, id]);
       await addTimeline(conn, id, { title: `ปิดเคส — สิ้นสุด${FOLLOWUP_LABEL[c.status]}`, user: user.name, kind: "close" });
     }
-    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "success", title: `เคส ${c.etracking} ปิดแล้ว`, caseId: id });
+    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "success", title: `เคส ${caseRef(c)} ปิดแล้ว`, caseId: id });
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  return getCaseById(id);
+}
+
+// Send a follow-up case back into the board queue (03) for another round of
+// committee consideration — used from the แจ้งความ/ดำเนินคดี (07) stage when the
+// case needs to be reconsidered by the คณะกรรมการ.
+async function sendFollowupToBoard(id, user) {
+  const c = await fetchOr404(id);
+  if (c.status !== "07") { const e = new Error("ส่งเข้าคณะกรรมการอีกครั้งได้เฉพาะเคสสถานะแจ้งความ/ดำเนินคดี"); e.status = 409; throw e; }
+  if (c.closed) { const e = new Error("เคสนี้ปิดแล้ว"); e.status = 409; throw e; }
+  if (sla.isCaseLocked(c)) { const e = new Error("เคสถูกล็อก เกินกำหนด SLA — ไม่สามารถดำเนินการได้"); e.status = 423; throw e; }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query("UPDATE cases SET status_code = '03' WHERE id = ?", [id]);
+    await addTimeline(conn, id, { title: "ส่งเข้าคณะกรรมการเพื่อพิจารณาอีกครั้ง (จากขั้นแจ้งความ/ดำเนินคดี)", user: user.name, kind: "decision" });
+    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคส ${caseRef(c)} ส่งเข้าคณะกรรมการเพื่อพิจารณาอีกครั้ง`, caseId: id });
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -669,7 +713,7 @@ async function applyBoardResolution(id, byName) {
     if (line) await addTimeline(conn, id, { title: line, user: "—", kind: "close" });
     // the fine stage is handled by เจ้าหน้าที่ค่าปรับ — tell them a case just entered it
     if (makeFines) {
-      await notifyUsers(conn, await userIdsForRoles(conn, ["fine"]), { icon: "info", title: `เคส ${c.etracking} เข้าสู่ขั้นชำระค่าปรับ`, caseId: id });
+      await notifyUsers(conn, await userIdsForRoles(conn, ["fine"]), { icon: "info", title: `เคส ${caseRef(c)} เข้าสู่ขั้นชำระค่าปรับ`, caseId: id });
     }
     await conn.commit();
   } catch (e) {
@@ -712,7 +756,7 @@ async function savePayment(id, fineId, paidDate, amount, byName) {
       await addTimeline(conn, id, { title: "ค่าปรับทั้งหมดชำระครบ — รอเจ้าหน้าที่ปิดเคส", user: "—", kind: "fine" });
       // assignees + fine officers close the case; heads/admins oversee it
       const payRecipients = [...c.assignees, ...await userIdsForRoles(conn, ["head", "admin", "fine"])];
-      await notifyUsers(conn, payRecipients, { icon: "success", title: `เคส ${c.etracking} ชำระค่าปรับครบแล้ว — พร้อมปิดเคส`, caseId: id });
+      await notifyUsers(conn, payRecipients, { icon: "success", title: `เคส ${caseRef(c)} ชำระค่าปรับครบแล้ว — พร้อมปิดเคส`, caseId: id });
     }
     await conn.commit();
   } catch (e) {
@@ -734,7 +778,7 @@ async function closeFineCase(id, byName) {
     await conn.beginTransaction();
     await conn.query("UPDATE cases SET status_code = '05' WHERE id = ?", [id]);
     await addTimeline(conn, id, { title: "ปิดเคส: ยุติคดี (ชำระค่าปรับครบ)", user: byName, kind: "close" });
-    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "success", title: `เคส ${c.etracking} ปิดแล้ว (ยุติคดี)`, caseId: id });
+    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "success", title: `เคส ${caseRef(c)} ปิดแล้ว (ยุติคดี)`, caseId: id });
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -799,7 +843,7 @@ async function cancelCase(id, reason, byName) {
     await addTimeline(conn, id, { title: `ยกเลิกเคส${reason ? ` — ${reason}` : ""}`, user: byName, kind: "close" });
     // the creator and any assignees are the people affected by a cancellation
     const cancelRecipients = [c.createdByUserId, ...c.assignees];
-    await notifyUsers(conn, cancelRecipients, { icon: "danger", title: `เคส ${c.etracking} ถูกยกเลิก`, caseId: id });
+    await notifyUsers(conn, cancelRecipients, { icon: "danger", title: `เคส ${caseRef(c)} ถูกยกเลิก`, caseId: id });
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -825,7 +869,7 @@ async function extendSla(id, days, reason, user) {
     });
     // the people working the case should know the clock moved
     const recipients = [...c.assignees, c.createdByUserId];
-    await notifyUsers(conn, recipients, { icon: "info", title: `เคส ${c.etracking} ได้รับการขยายกำหนด SLA +${n} วัน`, caseId: id });
+    await notifyUsers(conn, recipients, { icon: "info", title: `เคส ${caseRef(c)} ได้รับการขยายกำหนด SLA +${n} วัน`, caseId: id });
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -870,7 +914,7 @@ async function updateCase(id, payload, user) {
         respondent_licensee=?, respondent_business=?, respondent_address=?, respondent_license_no=?, respondent_district_id=?, respondent_subdistrict_id=?
        WHERE id=?`,
       [
-        payload.etracking, payload.letterNo, payload.letterDate || null, payload.postNo, payload.postDate || null, payload.title,
+        String(payload.etracking || "").trim() || null, payload.letterNo, payload.letterDate || null, payload.postNo, payload.postDate || null, payload.title,
         sourceId, payload.product || null, payload.productLicense || null,
         payload.bountyAmount || null,
         payload.bountyRequested ? 1 : 0, payload.bountyFirstName || null, payload.bountyLastName || null, payload.bountyNo || null,
@@ -895,6 +939,30 @@ async function updateCase(id, payload, user) {
   return getCaseById(id);
 }
 
+// Set/replace the E-tracking number after creation — the field is optional at
+// create time. Allowed for the creator, the assigned officers, or head/admin.
+async function setEtracking(id, etracking, user) {
+  const value = String(etracking || "").trim();
+  if (!value) { const e = new Error("กรุณากรอกเลข E-tracking"); e.status = 400; throw e; }
+  const c = await fetchOr404(id);
+  const allowed =
+    ["head", "admin"].includes(user.roleId) ||
+    c.assignees.includes(user.userId) ||
+    c.createdByUserId === user.userId;
+  if (!allowed) { const e = new Error("เพิ่มเลข E-tracking ได้เฉพาะผู้สร้างเคส เจ้าหน้าที่ที่ได้รับมอบหมาย หรือหัวหน้า/แอดมิน"); e.status = 403; throw e; }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query("UPDATE cases SET etracking = ? WHERE id = ?", [value, id]);
+    await addTimeline(conn, id, {
+      title: c.etracking ? `แก้ไขเลข E-tracking: ${c.etracking} → ${value}` : `เพิ่มเลข E-tracking: ${value}`,
+      user: user.name, kind: "create",
+    });
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  return getCaseById(id);
+}
+
 // Creator submits a case for head approval: a draft (is_draft 1 → 0) or a
 // returned case (returned 1 → 0). Heads/admins get notified either way.
 async function submitCase(id, user) {
@@ -912,7 +980,7 @@ async function submitCase(id, user) {
       // returned case fixed by its creator → back into the approval queue
       await conn.query("UPDATE cases SET returned = 0, return_reason = NULL WHERE id = ?", [id]);
       await addTimeline(conn, id, { title: "แก้ไขและส่งขออนุมัติอีกครั้ง", user: user.name, kind: "create" });
-      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคส ${c.etracking} แก้ไขแล้ว ส่งขออนุมัติอีกครั้ง`, caseId: id });
+      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคส ${caseRef(c)} แก้ไขแล้ว ส่งขออนุมัติอีกครั้ง`, caseId: id });
     }
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
@@ -929,7 +997,7 @@ async function returnCase(id, reason, user) {
     await conn.query("UPDATE cases SET returned = 1, return_reason = ? WHERE id = ?", [reason || null, id]);
     await addTimeline(conn, id, { title: `ส่งกลับให้เจ้าหน้าที่แก้ไข${reason ? ` — ${reason}` : ""}`, user: user.name, kind: "decision" });
     // the officer who created the case must fix it
-    await notifyUsers(conn, [c.createdByUserId], { icon: "warn", title: `เคส ${c.etracking} ถูกส่งกลับให้แก้ไข`, caseId: id });
+    await notifyUsers(conn, [c.createdByUserId], { icon: "warn", title: `เคส ${caseRef(c)} ถูกส่งกลับให้แก้ไข`, caseId: id });
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -945,6 +1013,14 @@ function dateOrNull(v) {
   if (!v) return null;
   const s = String(v).slice(0, 10);
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+// Pre-import duplicate check: which of the given etrackings already exist.
+async function checkEtrackings(etrackings) {
+  const list = [...new Set(etrackings.map((v) => String(v || "").trim()).filter(Boolean))].slice(0, 5000);
+  if (!list.length) return { existing: [] };
+  const [found] = await pool.query("SELECT etracking FROM cases WHERE etracking IN (?)", [list]);
+  return { existing: found.map((r) => r.etracking) };
 }
 
 // Imports rows (already parsed from Excel on the client) into cases.
@@ -1006,9 +1082,9 @@ async function importCases(rows, user) {
 }
 
 module.exports = {
-  getCaseById, getAllCases, listCases, createCase, updateCase,
+  getCaseById, getAllCases, listCases, createCase, updateCase, setEtracking,
   assignCase, reassignCase, saveInvestigation, addInvestigationEvent, decision,
   saveBoard, applyBoardResolution, savePayment, closeFineCase,
-  addFollowup, closeFollowupCase,
-  cancelCase, unlockCase, extendSla, returnCase, submitCase, importCases,
+  addFollowup, closeFollowupCase, sendFollowupToBoard,
+  cancelCase, unlockCase, extendSla, returnCase, submitCase, importCases, checkEtrackings,
 };

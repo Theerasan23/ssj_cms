@@ -8,6 +8,14 @@ import { AssignModal, InvestigationModal, BoardModal, FineModal, FollowupModal, 
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
 
+// ป้าย/ไอคอนของแนวทางที่เลือกจากการ์ด 4 ปุ่ม (ตาราง case_decisions)
+const DECISION_UI = {
+  board: { label: "เข้าคณะกรรมการ", icon: "users" },
+  forward: { label: "ส่งต่อหน่วยงาน", icon: "send" },
+  stop: { label: "เสนอนายแพทย์ยุติเรื่อง", icon: "check-circle" },
+  police: { label: "แจ้งความ/ดำเนินคดี", icon: "gavel" },
+};
+
 export default function CaseDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -19,6 +27,7 @@ export default function CaseDetailPage() {
   const [activeTab, setActiveTab] = useState("data");
   const [cancelReason, setCancelReason] = useState("");
   const [returnReason, setReturnReason] = useState("");
+  const [etrackingInput, setEtrackingInput] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -61,6 +70,8 @@ export default function CaseDetailPage() {
   const locked = cms.isCaseLocked(c);
   const lock = cms.lockReason(c);
   const canEditCase = c.status === "01" && !locked && c.createdByUserId === role.userId;
+  // E-tracking ไม่บังคับตอนสร้าง — ผู้สร้างเคสหรือผู้รับมอบหมาย (รวมหัวหน้า/แอดมิน) เพิ่ม/แก้ไขภายหลังได้
+  const canSetEtracking = canWork || isCreator;
   const canUnlock = role.id === "admin";
   // หัวหน้า (และแอดมิน) ขยายกำหนด SLA ได้โดยระบุจำนวนวัน
   const canExtend = ["head", "admin"].includes(role.id);
@@ -98,7 +109,7 @@ export default function CaseDetailPage() {
       toast.push({ kind: "danger", title: "บันทึกไม่สำเร็จ", msg: e.message });
     }
   }
-  const selectInvestPath = (path) => { if (guardLocked()) return; run(() => api.post(`/cases/${c.id}/decision`, { path }), "อัปเดตสถานะเคสสำเร็จ"); };
+  const selectInvestPath = (path, reason) => { if (guardLocked()) return; run(() => api.post(`/cases/${c.id}/decision`, { path, reason: reason || "" }), "อัปเดตสถานะเคสสำเร็จ"); };
   // Appends one meeting record; the modal stays open so more meetings can be added.
   async function saveBoardMeeting(payload) {
     if (guardLocked()) return false;
@@ -187,6 +198,10 @@ export default function CaseDetailPage() {
       toast.push({ kind: "danger", title: "ลบไม่สำเร็จ", msg: e.message });
     }
   }
+  function doSetEtracking() {
+    if (!etrackingInput.trim()) { toast.push({ kind: "warn", title: "กรุณากรอกเลข E-tracking" }); return; }
+    run(() => api.patch(`/cases/${c.id}/etracking`, { etracking: etrackingInput.trim() }), "บันทึกเลข E-tracking แล้ว");
+  }
   const doUnlock = () => run(() => api.post(`/cases/${c.id}/unlock`, {}), "ปลดล็อกเคสแล้ว", "ดำเนินการต่อได้ตามปกติ");
   const doExtend = (days, reason) => run(() => api.post(`/cases/${c.id}/extend`, { days, reason }), "ขยายกำหนด SLA แล้ว", `เพิ่ม ${days} วัน — เวลายังนับต่อ`);
   const doCancel = () => run(() => api.post(`/cases/${c.id}/cancel`, { reason: cancelReason }), "ยกเลิกเคสแล้ว");
@@ -237,7 +252,14 @@ export default function CaseDetailPage() {
         <div className="row between" style={{ alignItems: "flex-start", marginBottom: 12 }}>
           <div>
             <div className="small muted">E-tracking</div>
-            <div className="mono" style={{ fontSize: 16, fontWeight: 700 }}>{c.etracking}</div>
+            <div className="row" style={{ gap: 8, alignItems: "center" }}>
+              <div className="mono" style={{ fontSize: 16, fontWeight: 700 }}>{c.etracking || <span className="muted" style={{ fontWeight: 400 }}>— ยังไม่ระบุ</span>}</div>
+              {canSetEtracking && (
+                <button className="btn btn-outline btn-sm" onClick={() => { setEtrackingInput(c.etracking || ""); setModal("etracking"); }}>
+                  <Icon name="edit" size={12} /> {c.etracking ? "แก้ไข" : "เพิ่มเลข"}
+                </button>
+              )}
+            </div>
           </div>
           <div className="row" style={{ gap: 8 }}>
             <StatusBadge code={c.status} size="lg" />
@@ -306,7 +328,7 @@ export default function CaseDetailPage() {
     <div className="stack">
       <DataCard title="เลขอ้างอิง" icon="paperclip">
         <div className="kv">
-          <div className="k">E-tracking</div><div className="v mono">{c.etracking}</div>
+          <div className="k">E-tracking</div><div className="v mono">{c.etracking || "—"}</div>
           <div className="k">เลขรับหนังสือ</div><div className="v mono">{c.letterNo}</div>
           <div className="k">วันที่ของหนังสือ</div><div className="v">{cms.fmtThaiDate(c.letterDate)}</div>
           <div className="k">เลขรับ POST</div><div className="v mono">{c.postNo}</div>
@@ -390,6 +412,29 @@ export default function CaseDetailPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </DataCard>
+      )}
+
+      {c.decisions && c.decisions.length > 0 && (
+        <DataCard title="การเลือกแนวทางดำเนินการ" icon="arrow-right" actions={<span className="chip">{c.decisions.length} ครั้ง</span>}>
+          <div className="stack-sm">
+            {c.decisions.slice().reverse().map((dc) => {
+              const ui = DECISION_UI[dc.path] || { label: dc.path, icon: "arrow-right" };
+              return (
+                <div key={dc.id} className="row" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, alignItems: "flex-start" }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--accent-100)", color: "var(--accent-700)" }}>
+                    <Icon name={ui.icon} size={15} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{ui.label}</div>
+                    <div className="small muted">{cms.STATUS[dc.fromStatus]?.label || dc.fromStatus || "—"} → {cms.STATUS[dc.toStatus]?.label || dc.toStatus || "—"}</div>
+                    {dc.reason && <div className="small" style={{ marginTop: 2, lineHeight: 1.6 }}>เหตุผล: {dc.reason}</div>}
+                    <div className="small muted" style={{ marginTop: 3, fontSize: 11 }}>โดย {dc.user || "—"} · บันทึกเมื่อ {fmtTimestamp(cms, dc.createdAt)}</div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </DataCard>
       )}
@@ -531,13 +576,13 @@ export default function CaseDetailPage() {
         <div style={{ fontWeight: 800, fontSize: 18 }}>สำนักงานสาธารณสุขจังหวัดนนทบุรี</div>
         <div style={{ fontSize: 14, fontWeight: 600 }}>รายงานเรื่องร้องเรียน · กลุ่มงานคุ้มครองผู้บริโภค (คบส.)</div>
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-          เลขที่ {c.etracking} · สถานะ {cms.STATUS[c.status]?.label} · พิมพ์เมื่อ {cms.fmtThaiDate(cms.TODAY)}
+          เลขที่ {c.etracking || "—"} · สถานะ {cms.STATUS[c.status]?.label} · พิมพ์เมื่อ {cms.fmtThaiDate(cms.TODAY)}
         </div>
       </div>
       <div className="row" style={{ marginBottom: 12, gap: 4 }}>
         <button className="btn btn-ghost btn-sm" onClick={() => router.push("/cases")}><Icon name="arrow-left" size={14} /> ทุกเคส</button>
         <span className="small muted">/</span>
-        <span className="small mono" style={{ color: "var(--primary-700)" }}>{c.etracking}</span>
+        <span className="small mono" style={{ color: "var(--primary-700)" }}>{c.etracking || "ยังไม่ระบุ E-tracking"}</span>
       </div>
       <div className="page-header">
         <div>
@@ -634,11 +679,11 @@ export default function CaseDetailPage() {
       {modal === "assign" && <AssignModal c={c} onClose={() => setModal(null)} onSave={saveAssignment} />}
       {modal === "extend" && <ExtendSlaModal c={c} onClose={() => setModal(null)} onSave={doExtend} />}
       {modal === "invest" && <InvestigationModal c={c} onClose={() => setModal(null)} onAddEvent={addInvestEvent} onChoose={selectInvestPath} />}
-      {modal === "board" && <BoardModal c={c} onClose={() => setModal(null)} onSaveMeeting={saveBoardMeeting} onApply={applyBoard} />}
-      {modal === "fine" && <FineModal c={c} onClose={() => setModal(null)} onSave={savePayment} onCloseCase={doCloseFine} />}
-      {modal === "followup" && <FollowupModal c={c} onClose={() => setModal(null)} onAdd={addFollowupRecord} onCloseCase={doCloseFollowup} />}
+      {modal === "board" && <BoardModal c={c} onClose={() => setModal(null)} onSaveMeeting={saveBoardMeeting} onApply={applyBoard} onChoose={selectInvestPath} />}
+      {modal === "fine" && <FineModal c={c} onClose={() => setModal(null)} onSave={savePayment} onCloseCase={doCloseFine} onChoose={selectInvestPath} />}
+      {modal === "followup" && <FollowupModal c={c} onClose={() => setModal(null)} onAdd={addFollowupRecord} onCloseCase={doCloseFollowup} onChoose={selectInvestPath} />}
       {modal === "assignees" && (
-        <Modal open onClose={() => setModal(null)} title="ผู้รับผิดชอบเคส" sub={`${c.etracking} · ${c.assignees.length} คน`}
+        <Modal open onClose={() => setModal(null)} title="ผู้รับผิดชอบเคส" sub={`${c.etracking || "—"} · ${c.assignees.length} คน`}
           footer={<button className="btn btn-outline" onClick={() => setModal(null)}>ปิด</button>}>
           <div className="stack-sm">
             {c.assignees.map((oid) => {
@@ -658,8 +703,21 @@ export default function CaseDetailPage() {
           </div>
         </Modal>
       )}
+      {modal === "etracking" && (
+        <Modal open onClose={() => setModal(null)} title={c.etracking ? "แก้ไขเลข E-tracking" : "เพิ่มเลข E-tracking"} sub={c.title}
+          footer={<>
+            <button className="btn btn-outline" onClick={() => setModal(null)}>ปิด</button>
+            <button className="btn btn-primary" onClick={doSetEtracking}><Icon name="check" size={14} /> บันทึก</button>
+          </>}>
+          <FormField label="E-tracking Number" req hint="เลขจากระบบต้นทาง เช่น ECP-2569-00123">
+            <input className="input mono" placeholder="เช่น ECP-2569-00123" value={etrackingInput}
+              onChange={(e) => setEtrackingInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") doSetEtracking(); }} autoFocus />
+          </FormField>
+        </Modal>
+      )}
       {modal === "return" && (
-        <Modal open onClose={() => setModal(null)} title="ส่งกลับให้เจ้าหน้าที่แก้ไข" sub={c.etracking + " · " + c.title}
+        <Modal open onClose={() => setModal(null)} title="ส่งกลับให้เจ้าหน้าที่แก้ไข" sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
           footer={<>
             <button className="btn btn-outline" onClick={() => setModal(null)}>ปิด</button>
             <button className="btn btn-primary" onClick={doReturn}><Icon name="arrow-left" size={14} /> ยืนยันส่งกลับ</button>
@@ -675,7 +733,7 @@ export default function CaseDetailPage() {
         </Modal>
       )}
       {modal === "cancel" && (
-        <Modal open onClose={() => setModal(null)} title="ยกเลิกเคส" sub={c.etracking + " · " + c.title}
+        <Modal open onClose={() => setModal(null)} title="ยกเลิกเคส" sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
           footer={<>
             <button className="btn btn-outline" onClick={() => setModal(null)}>ปิด</button>
             <button className="btn btn-danger" onClick={doCancel}><Icon name="ban" size={14} /> ยืนยันยกเลิกเคส</button>

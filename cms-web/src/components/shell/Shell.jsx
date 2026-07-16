@@ -174,7 +174,7 @@ function HeaderControls() {
         <div className="role-switcher" onClick={() => setOpenRole((v) => !v)}>
           <div className="role-avatar">{role.initials}</div>
           <div className="role-meta">
-            <div className="role-name">{role.name}</div>
+            <div className="role-name">{(role.name || "").trim().split(/\s+/)[0]}</div>
             <div className="role-label">{role.role}</div>
           </div>
           <Icon name="chevron-down" size={14} style={{ color: "var(--text-muted)", marginLeft: 2 }} />

@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { StatusBadge, SLABadge, AvatarStack, ChipPicker } from "@/components/ui";
+import { StatusBadge, SLABadge, ChipPicker } from "@/components/ui";
 import { ExportButtons } from "@/components/ExportButtons";
 import { useApp } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
@@ -76,7 +76,7 @@ function CaseList() {
               <button className={`btn btn-sm ${scope === "mine" ? "btn-primary" : "btn-ghost"}`} onClick={() => setScope("mine")}>เคสของฉัน</button>
             </div>
             <ExportButtons rows={() => filtered} columns={[
-              { header: "E-tracking", value: (c) => c.etracking },
+              { header: "E-tracking", value: (c) => c.etracking || "" },
               { header: "ชื่อเคส", value: (c) => c.title },
               { header: "ผู้ถูกร้อง", value: (c) => c.respondent.business || c.respondent.licensee || "" },
               { header: "อำเภอ", value: (c) => c.respondent.district || "" },
@@ -151,7 +151,7 @@ function CaseList() {
                             {locked && <span className="lock-pill" title="เคสล็อก เกิน SLA"><Icon name="lock" size={10} /></span>}
                             {c.returned && <span className="lock-pill" style={{ background: "var(--warning-700)" }} title="ถูกส่งกลับให้แก้ไข"><Icon name="arrow-left" size={10} /></span>}
                             {c.isDraft && <span className="lock-pill" style={{ background: "var(--text-soft)" }} title="ร่าง — ยังไม่ส่งขออนุมัติ"><Icon name="edit" size={10} /> ร่าง</span>}
-                            {c.etracking}
+                            {c.etracking || <span className="muted">—</span>}
                           </div>
                         </td>
                         <td style={{ fontWeight: 500, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</td>
@@ -160,7 +160,7 @@ function CaseList() {
                           <div className="small muted">{c.respondent.district}</div>
                         </td>
                         <td><div className="tag-list">{c.laws.slice(0, 2).map((id) => <span key={id} className="chip">{cms.lawLabel(id)}</span>)}{c.laws.length > 2 && <span className="chip">+{c.laws.length - 2}</span>}</div></td>
-                        <td>{c.assignees.length === 0 ? <span className="muted small">— ยังไม่มอบหมาย</span> : <AvatarStack names={c.assignees.map((id) => cms.officerName(id))} max={3} size="sm" />}</td>
+                        <td>{c.assignees.length === 0 ? <span className="muted small">— ยังไม่มอบหมาย</span> : c.assignees.map((id) => cms.officerName(id).trim().split(/\s+/)[0]).join(", ")}</td>
                         <td><StatusBadge code={c.status} /></td>
                         <td><SLABadge sla={cms.caseSla(c)} /></td>
                         <td className="muted small">{cms.fmtThaiDateShort(c.postDate)}</td>

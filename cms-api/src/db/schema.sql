@@ -5,6 +5,7 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS notifications;
+DROP TABLE IF EXISTS case_decisions;
 DROP TABLE IF EXISTS case_investigations;
 DROP TABLE IF EXISTS case_timeline;
 DROP TABLE IF EXISTS case_fines;
@@ -147,7 +148,7 @@ CREATE TABLE users (
 -- ---------------- Cases ----------------
 CREATE TABLE cases (
   id                   VARCHAR(32) PRIMARY KEY,
-  etracking            VARCHAR(64) NOT NULL UNIQUE,
+  etracking            VARCHAR(64) UNIQUE,
   letter_no            VARCHAR(64),
   letter_date          DATE,
   post_no              VARCHAR(64),
@@ -350,6 +351,21 @@ CREATE TABLE case_followups (
   seq         INT NOT NULL DEFAULT 0,
   INDEX idx_followup_case (case_id, seq),
   CONSTRAINT fk_followup_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- การเลือกแนวทาง/เปลี่ยนแนวทางดำเนินการ (บันทึกจากการ์ด 4 ปุ่ม พร้อมเหตุผล)
+CREATE TABLE case_decisions (
+  id          INT AUTO_INCREMENT PRIMARY KEY,
+  case_id     VARCHAR(32) NOT NULL,
+  path        VARCHAR(16) NOT NULL,          -- board | forward | stop | police
+  from_status VARCHAR(2),
+  to_status   VARCHAR(2),
+  reason      TEXT,
+  user_name   VARCHAR(128),
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  seq         INT NOT NULL DEFAULT 0,
+  INDEX idx_decision_case (case_id, seq),
+  CONSTRAINT fk_decision_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE case_investigations (

@@ -76,12 +76,29 @@ async function getAttachment(caseId, attId) {
   return { ...row, filePath };
 }
 
-async function deleteAttachment(caseId, attId) {
-  const [rows] = await pool.query("SELECT stored_name FROM case_attachments WHERE id = ? AND case_id = ?", [attId, caseId]);
-  if (!rows.length) { const e = new Error("ไม่พบเอกสารแนบ"); e.status = 404; throw e; }
-  await pool.query("DELETE FROM case_attachments WHERE id = ? AND case_id = ?", [attId, caseId]);
-  if (rows[0].stored_name) {
-    const filePath = path.join(caseDir(caseId), rows[0].stored_name);
+async function deleteAttachment(caseId, attId, byName) {
+  const conn = await pool.getConnection();
+  let storedName = null;
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query("SELECT name, stored_name FROM case_attachments WHERE id = ? AND case_id = ?", [attId, caseId]);
+    if (!rows.length) { const e = new Error("ไม่พบเอกสารแนบ"); e.status = 404; throw e; }
+    storedName = rows[0].stored_name;
+    await conn.query("DELETE FROM case_attachments WHERE id = ? AND case_id = ?", [attId, caseId]);
+    const seq = await conn.query("SELECT COALESCE(MAX(seq), -1) + 1 AS n FROM case_timeline WHERE case_id = ?", [caseId]);
+    await conn.query(
+      "INSERT INTO case_timeline (case_id, date, time, title, user_name, kind, status, seq) VALUES (?, CURDATE(), DATE_FORMAT(NOW(), '%H:%i'), ?, ?, 'create', 'in-time', ?)",
+      [caseId, `ลบเอกสารแนบ: ${rows[0].name}`, byName, seq[0][0].n]
+    );
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+  if (storedName) {
+    const filePath = path.join(caseDir(caseId), storedName);
     fs.promises.unlink(filePath).catch(() => { /* file already gone — ignore */ });
   }
 }

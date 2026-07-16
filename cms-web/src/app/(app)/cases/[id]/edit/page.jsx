@@ -104,7 +104,7 @@ export default function CaseEditPage() {
       initial={caseToForm(caseObj)}
       submitLabel={caseObj.isDraft ? "บันทึกและส่งขออนุมัติหัวหน้า" : caseObj.returned ? "บันทึกและส่งขออนุมัติอีกครั้ง" : "บันทึกการแก้ไข"}
       headerTitle={caseObj.isDraft ? "แก้ไขร่างเคสร้องเรียน" : "แก้ไขเคสร้องเรียน"}
-      headerSub={`${caseObj.etracking} · แก้ไขได้ขณะรอมอบหมายเท่านั้น`}
+      headerSub={`${caseObj.etracking || "ยังไม่ระบุ E-tracking"} · แก้ไขได้ขณะรอมอบหมายเท่านั้น`}
       banner={banner}
       onSubmit={onSubmit}
       secondary={caseObj.isDraft || caseObj.returned

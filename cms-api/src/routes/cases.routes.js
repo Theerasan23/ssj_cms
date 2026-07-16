@@ -94,6 +94,17 @@ router.patch("/:id", requireRole("supply", "officer", "head", "admin"), async (r
   }
 });
 
+// PATCH /api/cases/:id/etracking { etracking } — add/replace the E-tracking number
+// later (it is optional at create time); service allows creator, assignees, head/admin
+router.patch("/:id/etracking", requireRole("supply", "officer", "head", "admin"), async (req, res, next) => {
+  try {
+    res.json(await cases.setEtracking(req.params.id, (req.body || {}).etracking, req.user));
+  } catch (e) {
+    if (e.code === "ER_DUP_ENTRY") { e.status = 409; e.message = "เลข E-tracking นี้มีในระบบแล้ว"; }
+    next(e);
+  }
+});
+
 // assignees are user ids (บัญชีเจ้าหน้าที่ดำเนินการ); officerIds accepted as a legacy alias
 function assigneeIdsFrom(body) {
   return ((body || {}).assigneeIds || (body || {}).officerIds || []).map(Number).filter(Number.isFinite);
@@ -131,10 +142,11 @@ router.post("/:id/investigation/event", requireRole("officer", "head", "admin"),
   } catch (e) { next(e); }
 });
 
-// POST /api/cases/:id/decision { path }
-router.post("/:id/decision", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
+// POST /api/cases/:id/decision { path, reason } — reason is required for a mid-flow
+// course change (from 04/07); role "fine" is limited to status 04 by requireCaseActor
+router.post("/:id/decision", requireRole("officer", "fine", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
-    res.json(await cases.decision(req.params.id, (req.body || {}).path, req.user.name));
+    res.json(await cases.decision(req.params.id, (req.body || {}).path, (req.body || {}).reason, req.user.name));
   } catch (e) { next(e); }
 });
 
@@ -166,6 +178,13 @@ router.post("/:id/payment", requireRole("officer", "fine", "head", "admin"), req
 router.post("/:id/followup", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
     res.json(await cases.addFollowup(req.params.id, req.body || {}, req.user));
+  } catch (e) { next(e); }
+});
+
+// POST /api/cases/:id/to-board — send a 07 (แจ้งความ/ดำเนินคดี) case back to the board queue (03)
+router.post("/:id/to-board", requireRole("officer", "head", "admin"), requireCaseActor, async (req, res, next) => {
+  try {
+    res.json(await cases.sendFollowupToBoard(req.params.id, req.user));
   } catch (e) { next(e); }
 });
 
@@ -243,8 +262,17 @@ router.get("/:id/attachments/:attId", async (req, res, next) => {
 // DELETE /api/cases/:id/attachments/:attId
 router.delete("/:id/attachments/:attId", requireRole("supply", "officer", "fine", "head", "admin"), requireCaseActor, async (req, res, next) => {
   try {
-    await attachments.deleteAttachment(req.params.id, req.params.attId);
+    await attachments.deleteAttachment(req.params.id, req.params.attId, req.user.name);
     res.json(await cases.getCaseById(req.params.id));
+  } catch (e) { next(e); }
+});
+
+// POST /api/cases/import/check { etrackings: [...] }  (admin) → which etrackings already exist
+router.post("/import/check", requireRole("admin"), async (req, res, next) => {
+  try {
+    const list = (req.body && req.body.etrackings) || [];
+    if (!Array.isArray(list)) return res.status(400).json({ error: "รูปแบบข้อมูลไม่ถูกต้อง" });
+    res.json(await cases.checkEtrackings(list));
   } catch (e) { next(e); }
 });
 

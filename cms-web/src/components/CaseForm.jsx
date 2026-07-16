@@ -19,7 +19,7 @@ export function blankCaseForm(todayIso) {
 // Maps an API case object into form values (for editing).
 export function caseToForm(c) {
   return {
-    etracking: c.etracking, letterNo: c.letterNo || "", letterDate: c.letterDate || "", postNo: c.postNo || "", postDate: c.postDate || "",
+    etracking: c.etracking || "", letterNo: c.letterNo || "", letterDate: c.letterDate || "", postNo: c.postNo || "", postDate: c.postDate || "",
     complainant: { name: c.complainant.name || "", phone: c.complainant.phone || "", email: c.complainant.email || "", address: c.complainant.address || "", channel: c.complainant.channel || "", anonymous: !!c.complainant.anonymous },
     respondent: { licensee: c.respondent.licensee || "", business: c.respondent.business || "", address: c.respondent.address || "", district: c.respondent.district || "", subdistrict: c.respondent.subdistrict || "", licenseNo: c.respondent.licenseNo || "" },
     title: c.title || "", laws: c.laws || [], source: c.source || "", product: c.product || "", productLicense: c.productLicense || "", problems: c.problems || [],
@@ -54,7 +54,6 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
 
   function validate() {
     const e = {}, w = {};
-    if (!form.etracking) e.etracking = "กรุณากรอก E-tracking";
     if (!form.letterNo) e.letterNo = "กรุณากรอกเลขรับหนังสือ";
     if (!form.letterDate) e.letterDate = "กรุณาเลือกวันที่หนังสือ";
     if (!form.postNo) e.postNo = "กรุณากรอกเลขรับ POST";
@@ -131,7 +130,7 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
           </div>
           <div className="section-body">
             <div className="form-grid cols-2">
-              <FormField label="E-tracking Number" req error={errors.etracking}>
+              <FormField label="E-tracking Number" error={errors.etracking} hint="ไม่บังคับ — ใส่ภายหลังได้ในหน้ารายละเอียดเคส (โดยผู้สร้างเคสหรือผู้ที่ได้รับมอบหมาย)">
                 <input className={`input mono ${errors.etracking ? "error" : ""}`} placeholder="เช่น ECP-2569-00123" value={form.etracking} onChange={(e) => update("etracking", e.target.value)} />
               </FormField>
               <div></div>
@@ -189,10 +188,10 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
           <div className="section-head"><div className="section-num">3</div><div><div className="section-title">ข้อมูลผู้ถูกร้อง</div><div className="section-sub">กรอกอย่างน้อย 1 ใน 2: ชื่อผู้รับอนุญาต / ชื่อสถานประกอบการ</div></div></div>
           <div className="section-body">
             <div className="form-grid cols-2">
-              <FormField label="ชื่อผู้รับอนุญาต" error={errors.respondent && !form.respondent.licensee && !form.respondent.business ? errors.respondent : null}>
+              <FormField label="ชื่อผู้รับอนุญาต" req error={errors.respondent && !form.respondent.licensee && !form.respondent.business ? errors.respondent : null}>
                 <input className={`input ${errors.respondent ? "error" : ""}`} placeholder="เช่น นายอนุชา สังข์ทอง" value={form.respondent.licensee} onChange={(e) => update("respondent.licensee", e.target.value)} />
               </FormField>
-              <FormField label="ชื่อสถานประกอบการ">
+              <FormField label="ชื่อสถานประกอบการ" req>
                 <input className={`input ${errors.respondent ? "error" : ""}`} placeholder="เช่น ร้านยาดีใจเภสัช" value={form.respondent.business} onChange={(e) => update("respondent.business", e.target.value)} />
               </FormField>
               <FormField label="ที่อยู่" full>

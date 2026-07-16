@@ -8,7 +8,7 @@ const router = express.Router();
 router.get("/", requireAuth, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT t.date, t.time, t.user_name AS who, t.title AS what, c.etracking AS target
+      `SELECT t.date, t.time, t.user_name AS who, t.title AS what, COALESCE(c.etracking, c.title) AS target
        FROM case_timeline t JOIN cases c ON c.id = t.case_id
        ORDER BY t.date DESC, t.id DESC LIMIT 40`
     );

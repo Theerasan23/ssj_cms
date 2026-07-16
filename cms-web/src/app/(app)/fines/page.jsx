@@ -33,7 +33,7 @@ export default function FinesPage() {
         </div>
         <div className="page-actions">
           <ExportButtons rows={() => rows} filename={`fines-${tab}`} size="md" columns={[
-            { header: "E-tracking", value: (f) => f.c.etracking },
+            { header: "E-tracking", value: (f) => f.c.etracking || "" },
             { header: "เคส", value: (f) => f.c.title },
             { header: "มาตรา", value: (f) => cms.sectionById(f.secId)?.text || f.secId },
             { header: "ครั้งที่", value: (f) => f.count },
@@ -88,7 +88,7 @@ export default function FinesPage() {
                 const sec = cms.sectionById(f.secId);
                 return (
                   <tr key={i} onClick={() => router.push(`/cases/${f.c.id}`)}>
-                    <td className="num">{f.c.etracking}</td>
+                    <td className="num">{f.c.etracking || "—"}</td>
                     <td style={{ fontWeight: 500 }}>{f.c.title}</td>
                     <td>{sec?.text}</td>
                     <td className="num">{f.count}</td>

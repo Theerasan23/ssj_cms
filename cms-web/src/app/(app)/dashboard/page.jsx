@@ -138,7 +138,7 @@ function HeadDashboard({ cases, reload }) {
               <div key={c.id} className={`approval-card ${locked ? "is-locked" : ""}`}>
                 <div>
                   <div className="row" style={{ gap: 8, alignItems: "center" }}>
-                    <span className="ap-tracking">{c.etracking}</span>
+                    <span className="ap-tracking">{c.etracking || "—"}</span>
                     <StatusBadge code={c.status} size="sm" />
                     {locked ? <span className="lock-pill"><Icon name="lock" size={10} /> ล็อก — เกิน SLA</span> : <SLABadge sla={sla} />}
                     {c.bountyAmount && <span className="chip accent" style={{ fontSize: 10.5 }}>💰 สินบนนำจับ</span>}
@@ -328,7 +328,7 @@ function OfficerDashboard({ cases }) {
             <tbody>
               {recent.map((c) => (
                 <tr key={c.id} onClick={() => router.push(`/cases/${c.id}`)}>
-                  <td className="num">{c.etracking}</td>
+                  <td className="num">{c.etracking || "—"}</td>
                   <td style={{ fontWeight: 500, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</td>
                   <td>{c.respondent.business || c.respondent.licensee || "—"}</td>
                   <td><div className="tag-list">{c.laws.slice(0, 2).map((id) => <span key={id} className="chip">{cms.lawLabel(id)}</span>)}{c.laws.length > 2 && <span className="chip">+{c.laws.length - 2}</span>}</div></td>
