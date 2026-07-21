@@ -894,9 +894,15 @@ async function updateCase(id, payload, user) {
   const errors = validateCreate(payload);
   if (errors.length) { const e = new Error(errors[0]); e.status = 400; e.errors = errors; throw e; }
   const c = await fetchOr404(id);
-  if (c.status !== "01") { const e = new Error("แก้ไขได้เฉพาะเคสที่ยังรอมอบหมาย"); e.status = 409; throw e; }
-  if (sla.isCaseLocked(c)) { const e = new Error("เคสถูกล็อก แก้ไขไม่ได้"); e.status = 423; throw e; }
-  if (c.createdByUserId !== user.userId) { const e = new Error("แก้ไขได้เฉพาะเจ้าหน้าที่ผู้สร้างเคสเท่านั้น"); e.status = 403; throw e; }
+  // admin แก้ไขได้ทุกสถานะ (รวมถึงเคสที่ล็อก/ปิดแล้ว) และไม่ต้องเป็นผู้สร้าง
+  // ผู้สร้างเคส (คนกรอกเข้าระบบ) และผู้ที่ได้รับมอบหมายจากหัวหน้า แก้ไขได้ทุกสถานะเช่นกัน
+  // แต่เคสที่ล็อก (เกิน SLA) แก้ไม่ได้จนกว่าหัวหน้าจะขยายกำหนด หรือแอดมินปลดล็อก
+  if (user.roleId !== "admin") {
+    if (sla.isCaseLocked(c)) { const e = new Error("เคสถูกล็อก แก้ไขไม่ได้"); e.status = 423; throw e; }
+    const isCreator = c.createdByUserId === user.userId;
+    const isAssignee = Array.isArray(c.assignees) && c.assignees.includes(user.userId);
+    if (!isCreator && !isAssignee) { const e = new Error("แก้ไขได้เฉพาะเจ้าหน้าที่ผู้สร้างเคส ผู้ที่ได้รับมอบหมาย หรือแอดมิน"); e.status = 403; throw e; }
+  }
 
   const conn = await pool.getConnection();
   try {

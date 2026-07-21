@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 export default function CaseEditPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { actions } = useApp();
+  const { actions, role } = useApp();
   const toast = useToasts();
   const [caseObj, setCaseObj] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -75,7 +75,7 @@ export default function CaseEditPage() {
       </div></div></main>
     );
   }
-  if (caseObj.status !== "01") {
+  if (caseObj.status !== "01" && role.id !== "admin") {
     return (
       <main className="page"><div className="card"><div className="table-empty">
         <div className="empty-icon"><Icon name="lock" size={26} /></div>
@@ -104,7 +104,7 @@ export default function CaseEditPage() {
       initial={caseToForm(caseObj)}
       submitLabel={caseObj.isDraft ? "บันทึกและส่งขออนุมัติหัวหน้า" : caseObj.returned ? "บันทึกและส่งขออนุมัติอีกครั้ง" : "บันทึกการแก้ไข"}
       headerTitle={caseObj.isDraft ? "แก้ไขร่างเคสร้องเรียน" : "แก้ไขเคสร้องเรียน"}
-      headerSub={`${caseObj.etracking || "ยังไม่ระบุ E-tracking"} · แก้ไขได้ขณะรอมอบหมายเท่านั้น`}
+      headerSub={`${caseObj.etracking || "ยังไม่ระบุ E-tracking"} · ${caseObj.status !== "01" && role.id === "admin" ? "แก้ไขในสิทธิ์ Admin" : "แก้ไขได้ขณะรอมอบหมายเท่านั้น"}`}
       banner={banner}
       onSubmit={onSubmit}
       secondary={caseObj.isDraft || caseObj.returned
