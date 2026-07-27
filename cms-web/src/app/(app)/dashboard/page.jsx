@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { StatusBadge, SLABadge, Avatar, AvatarStack, Donut } from "@/components/ui";
+import { StatusBadge, SLABadge, Avatar, Donut } from "@/components/ui";
 import { AssignModal } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
@@ -332,7 +332,7 @@ function OfficerDashboard({ cases }) {
                   <td style={{ fontWeight: 500, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</td>
                   <td>{c.respondent.business || c.respondent.licensee || "—"}</td>
                   <td><div className="tag-list">{c.laws.slice(0, 2).map((id) => <span key={id} className="chip">{cms.lawLabel(id)}</span>)}{c.laws.length > 2 && <span className="chip">+{c.laws.length - 2}</span>}</div></td>
-                  <td>{c.assignees.length === 0 ? <span className="muted small">— ยังไม่มอบหมาย</span> : <AvatarStack names={c.assignees.map((id) => cms.officerName(id))} max={3} size="sm" />}</td>
+                  <td>{c.assignees.length === 0 ? <span className="muted small">— ยังไม่มอบหมาย</span> : c.assignees.map((id) => cms.officerName(id).trim().split(/\s+/)[0]).join(", ")}</td>
                   <td><StatusBadge code={c.status} /></td>
                   <td><SLABadge sla={cms.caseSla(c)} /></td>
                   <td className="muted small">{cms.fmtThaiDateShort(c.postDate)}</td>
