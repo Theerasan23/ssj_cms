@@ -75,12 +75,15 @@ export default function CaseEditPage() {
       </div></div></main>
     );
   }
-  if (caseObj.status !== "01" && role.id !== "admin") {
+  // แก้ไขได้: admin (ทุกสถานะ) · ผู้สร้างเคส · ผู้ที่ได้รับมอบหมาย — การล็อก/สถานะ enforce ที่ backend ตอนบันทึก
+  const isCreator = caseObj.createdByUserId === role.userId;
+  const isAssignee = Array.isArray(caseObj.assignees) && caseObj.assignees.includes(role.userId);
+  if (role.id !== "admin" && !isCreator && !isAssignee) {
     return (
       <main className="page"><div className="card"><div className="table-empty">
         <div className="empty-icon"><Icon name="lock" size={26} /></div>
         <div style={{ fontWeight: 600 }}>แก้ไขไม่ได้</div>
-        <div className="small">แก้ไขได้เฉพาะเคสที่ยังอยู่ในสถานะ "รอมอบหมาย" เท่านั้น</div>
+        <div className="small">แก้ไขได้เฉพาะเจ้าหน้าที่ผู้สร้างเคส ผู้ที่ได้รับมอบหมาย หรือแอดมิน</div>
         <button className="btn btn-primary" onClick={() => router.push(`/cases/${id}`)}>กลับสู่รายละเอียดเคส</button>
       </div></div></main>
     );
@@ -104,7 +107,7 @@ export default function CaseEditPage() {
       initial={caseToForm(caseObj)}
       submitLabel={caseObj.isDraft ? "บันทึกและส่งขออนุมัติหัวหน้า" : caseObj.returned ? "บันทึกและส่งขออนุมัติอีกครั้ง" : "บันทึกการแก้ไข"}
       headerTitle={caseObj.isDraft ? "แก้ไขร่างเคสร้องเรียน" : "แก้ไขเคสร้องเรียน"}
-      headerSub={`${caseObj.etracking || "ยังไม่ระบุ E-tracking"} · ${caseObj.status !== "01" && role.id === "admin" ? "แก้ไขในสิทธิ์ Admin" : "แก้ไขได้ขณะรอมอบหมายเท่านั้น"}`}
+      headerSub={`${caseObj.etracking || "ยังไม่ระบุ E-tracking"} · ${caseObj.status !== "01" ? (role.id === "admin" ? "แก้ไขในสิทธิ์ Admin" : "แก้ไขข้อมูลเคส") : "แก้ไขได้ขณะรอมอบหมาย"}`}
       banner={banner}
       onSubmit={onSubmit}
       secondary={caseObj.isDraft || caseObj.returned

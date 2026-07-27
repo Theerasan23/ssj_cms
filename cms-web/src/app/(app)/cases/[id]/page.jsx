@@ -70,8 +70,9 @@ export default function CaseDetailPage() {
   const locked = cms.isCaseLocked(c);
   const lock = cms.lockReason(c);
   const isAdmin = role.id === "admin";
-  // admin แก้ไขได้ทุกสถานะ (รวมเคสที่ล็อก/ปิดแล้ว); ผู้ใช้อื่นเฉพาะผู้สร้าง ขณะรอมอบหมาย และยังไม่ล็อก
-  const canEditCase = isAdmin || (c.status === "01" && !locked && c.createdByUserId === role.userId);
+  // admin แก้ไขได้ทุกสถานะ (รวมเคสที่ล็อก/ปิดแล้ว)
+  // ผู้สร้างเคส (คนกรอกเข้าระบบ) และผู้ที่ได้รับมอบหมาย แก้ไขได้ทุกสถานะ ยกเว้นเคสที่ล็อก
+  const canEditCase = isAdmin || (!locked && (isCreator || isAssignee));
   // E-tracking ไม่บังคับตอนสร้าง — ผู้สร้างเคสหรือผู้รับมอบหมาย (รวมหัวหน้า/แอดมิน) เพิ่ม/แก้ไขภายหลังได้
   const canSetEtracking = canWork || isCreator;
   const canUnlock = role.id === "admin";
@@ -594,7 +595,7 @@ export default function CaseDetailPage() {
         <div className="page-actions">
           <button className="btn btn-outline btn-sm" onClick={() => window.print()}><Icon name="printer" size={14} /> พิมพ์ PDF</button>
           <button className="btn btn-outline btn-sm" disabled={!canEditCase}
-            title={canEditCase ? (isAdmin && (locked || c.status !== "01") ? "แก้ไขในสิทธิ์ Admin" : "") : (locked ? "เคสล็อก — เกิน SLA" : (c.status !== "01" ? "แก้ไขได้เฉพาะตอนรอมอบหมาย" : ""))}
+            title={canEditCase ? (isAdmin && (locked || c.status !== "01") ? "แก้ไขในสิทธิ์ Admin" : "") : (locked ? "เคสล็อก — เกิน SLA" : "แก้ไขได้เฉพาะผู้สร้างเคส ผู้ที่ได้รับมอบหมาย หรือแอดมิน")}
             onClick={() => canEditCase && router.push(`/cases/${c.id}/edit`)}>
             <Icon name={!canEditCase && locked ? "lock" : "edit"} size={14} /> {!canEditCase && locked ? "ล็อก" : "แก้ไข"}
           </button>

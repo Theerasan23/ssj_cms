@@ -15,7 +15,7 @@ const DATE_FIELDS = ["letterDate", "postDate", "createdAt"];
 
 // Columns the importer understands (header row must use these keys).
 const COLUMNS = [
-  { key: "etracking", label: "E-tracking", req: true },
+  { key: "etracking", label: "E-tracking (ไม่บังคับ)" },
   { key: "title", label: "ชื่อเคส (≥5 ตัวอักษร)", req: true },
   { key: "status", label: "สถานะ 01–08 (ว่าง = 01)" },
   { key: "laws", label: "พรบ. (รหัสหรือชื่อ คั่นด้วย , เช่น drug,อาหาร)" },
@@ -83,8 +83,8 @@ function validateRow(r, ctx) {
   const errors = [];
   const warns = [];
   const et = (r.etracking || "").trim();
-  if (!et) errors.push({ field: "etracking", msg: "ไม่มี E-tracking" });
-  else {
+  // E-tracking ไม่บังคับ — ตรวจซ้ำเฉพาะเมื่อมีการกรอกค่ามาเท่านั้น
+  if (et) {
     if ((ctx.fileCount[et] || 0) > 1) errors.push({ field: "etracking", msg: "E-tracking ซ้ำกันในไฟล์" });
     if (ctx.dbDup.has(et)) errors.push({ field: "etracking", msg: "E-tracking นี้มีอยู่ในระบบแล้ว" });
   }
@@ -233,8 +233,8 @@ export default function ImportPage() {
       const wb = window.XLSX.read(data, { cellDates: true });
       const ws = wb.Sheets[wb.SheetNames[0]];
       const { headers, rows: parsed } = parseSheet(window.XLSX, ws);
-      if (!headers.includes("etracking") || !headers.includes("title")) {
-        toast.push({ kind: "danger", title: "หัวตารางไม่ถูกต้อง", msg: "ต้องมีคอลัมน์ etracking และ title (ดาวน์โหลด Template เพื่อดูตัวอย่าง)" });
+      if (!headers.includes("title")) {
+        toast.push({ kind: "danger", title: "หัวตารางไม่ถูกต้อง", msg: "ต้องมีคอลัมน์ title เป็นอย่างน้อย (ดาวน์โหลด Template เพื่อดูตัวอย่าง)" });
         return;
       }
       const normalized = parsed.map((r) => ({
@@ -559,7 +559,7 @@ function EditRowModal({ row, ctx, master, cms, onClose, onDelete, onSave }) {
       }
     >
       <div className="form-grid cols-2">
-        <FormField label="E-tracking" req error={err("etracking")}>
+        <FormField label="E-tracking" error={err("etracking")}>
           <input className={`input ${err("etracking") ? "error" : ""}`} value={d.etracking || ""} onChange={set("etracking")} />
         </FormField>
         <FormField label="สถานะ" warning={warn("status")}>

@@ -1039,7 +1039,7 @@ async function importCases(rows, user) {
       await conn.beginTransaction();
       const etracking = String(r.etracking || "").trim();
       const title = String(r.title || "").trim();
-      if (!etracking) throw new Error("ไม่มี E-tracking");
+      // E-tracking ไม่บังคับ — เว้นว่างได้ (บันทึกเป็น NULL) ; title ยังบังคับ
       if (title.length < 5) throw new Error("ชื่อเคสต้องมีอย่างน้อย 5 ตัวอักษร");
       const status = ["01", "02", "03", "04", "05", "06", "07", "08"].includes(String(r.status)) ? String(r.status) : "01";
       const id = newCaseId();
@@ -1057,7 +1057,7 @@ async function importCases(rows, user) {
           created_by, created_by_user_id, created_at
         ) VALUES (?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?, ?,?,?, ?,?,?)`,
         [
-          id, etracking, r.letterNo || null, dateOrNull(r.letterDate), r.postNo || null, dateOrNull(r.postDate), title,
+          id, etracking || null, r.letterNo || null, dateOrNull(r.letterDate), r.postNo || null, dateOrNull(r.postDate), title,
           sourceId, r.product || null, r.productLicense || null,
           r.bountyAmount ? String(r.bountyAmount) : null, r.description || null, status,
           r.complainant_name || null, r.complainant_phone || null, r.complainant_email || null, channelId,
