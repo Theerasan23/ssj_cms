@@ -17,19 +17,26 @@ export const authOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        let res;
         try {
-          const res = await fetch(`${API}/auth/login`, {
+          res = await fetch(`${API}/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username: credentials?.username, password: credentials?.password }),
           });
-          if (!res.ok) return null;
-          const data = await res.json();
-          if (!data?.token || !data?.user) return null;
-          return { id: String(data.user.userId), apiToken: data.token, cms: data.user };
         } catch {
-          return null;
+          return null; // API unreachable
         }
+        // Throttled or disabled account: surface the API's reason instead of letting the
+        // UI blame the password. Thrown (not returned) so NextAuth carries the message.
+        if (res.status === 429 || res.status === 403) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่ภายหลัง");
+        }
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => null);
+        if (!data?.token || !data?.user) return null;
+        return { id: String(data.user.userId), apiToken: data.token, cms: data.user };
       },
     }),
   ],

@@ -7,8 +7,21 @@ const { rateLimit } = require("../middleware/rateLimit");
 
 const router = express.Router();
 
-// Throttle login to slow credential brute-forcing: max 10 attempts / 15 min / IP.
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: "พยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่" });
+// Throttle login to slow credential brute-forcing: max 10 FAILED attempts / 15 min,
+// bucketed per username+IP.
+//
+// Both details matter here. The UI signs in through NextAuth, whose authorize() runs
+// server-side, so every browser login reaches this API from the Next.js server's IP —
+// an IP-only bucket is therefore shared by the whole organisation. And counting
+// successful logins would let ten ordinary sign-ins lock that shared bucket, which
+// surfaces to the user as "รหัสผ่านไม่ถูกต้อง" right after they changed their password.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skipSuccessful: true,
+  keyFn: (req) => `${req.ip}|${String((req.body || {}).username || "").trim().toLowerCase()}`,
+  message: "พยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่",
+});
 
 const USER_SELECT = `
   SELECT u.id, u.username, u.role_id, u.name, u.initials, u.email, u.phone, u.active,
@@ -39,7 +52,10 @@ async function userById(id) {
 // POST /api/auth/login { username, password }
 router.post("/login", loginLimiter, async (req, res, next) => {
   try {
-    const { username, password } = req.body || {};
+    // trim both sides: stored passwords are trimmed before hashing, so a pasted
+    // credential with a stray space/newline should still sign in
+    const username = String((req.body || {}).username || "").trim();
+    const password = String((req.body || {}).password || "").trim();
     if (!username || !password) return res.status(400).json({ error: "กรุณากรอก username และ password" });
     const [rows] = await pool.query("SELECT id, password_hash, active FROM users WHERE username = ?", [username]);
     if (!rows.length) return res.status(401).json({ error: "username หรือ password ไม่ถูกต้อง" });

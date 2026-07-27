@@ -35,7 +35,10 @@ export default function LoginPage() {
     setLoading(true);
     const res = await signIn("credentials", { username: username.trim(), password, redirect: false });
     if (res?.error || !res?.ok) {
-      setError("Username หรือ Password ไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน");
+      // authorize() throws a specific reason (throttled / disabled); anything else
+      // comes back as the generic CredentialsSignin code
+      const reason = res?.error && res.error !== "CredentialsSignin" ? res.error : null;
+      setError(reason || "Username หรือ Password ไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน");
       setLoading(false);
       return;
     }
@@ -93,10 +96,6 @@ export default function LoginPage() {
             <label>Password</label>
             <input type="password" className="input" placeholder="••••••••" value={password}
               onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-          </div>
-          <div className="row between" style={{ marginTop: -4 }}>
-            <label className="checkbox"><input type="checkbox" defaultChecked />จดจำการเข้าระบบ</label>
-            <a href="#" className="small" style={{ color: "var(--primary-600)" }} onClick={(e) => e.preventDefault()}>ลืมรหัสผ่าน?</a>
           </div>
           <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={loading}>
             {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}

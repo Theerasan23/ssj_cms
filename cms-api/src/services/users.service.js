@@ -44,7 +44,9 @@ async function createUser(body) {
   if (!name) { const e = new Error("กรุณากรอกชื่อ-นามสกุล"); e.status = 400; throw e; }
   const roleId = body.roleId || "officer";
   const username = body.username && body.username.trim() ? body.username.trim() : await nextUsername();
-  const password = body.password && body.password.length ? body.password : "123456";
+  // trim: a pasted password often carries a trailing space/newline, which would be
+  // hashed in but never typed at the login screen
+  const password = String(body.password || "").trim() || "123456";
   const initials = body.initials || initialsFromName(name);
   try {
     const [res] = await pool.query(
@@ -65,7 +67,8 @@ async function updateUser(id, body) {
   for (const [key, col] of Object.entries(map)) {
     if (body[key] !== undefined) { sets.push(`${col} = ?`); vals.push(body[key] || null); }
   }
-  if (body.password) { sets.push("password_hash = ?"); vals.push(bcrypt.hashSync(body.password, 10)); }
+  const password = String(body.password || "").trim();
+  if (password) { sets.push("password_hash = ?"); vals.push(bcrypt.hashSync(password, 10)); }
   if (!sets.length) { const e = new Error("ไม่มีข้อมูลให้แก้ไข"); e.status = 400; throw e; }
   vals.push(id);
   await pool.query(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`, vals);
@@ -95,9 +98,10 @@ async function updateProfile(userId, body) {
   for (const [key, col] of [["name", "name"], ["email", "email"], ["phone", "phone"]]) {
     if (body[key] !== undefined) { sets.push(`${col} = ?`); vals.push(body[key] || null); }
   }
-  if (body.password) {
-    if (String(body.password).length < 6) { const e = new Error("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"); e.status = 400; throw e; }
-    sets.push("password_hash = ?"); vals.push(bcrypt.hashSync(body.password, 10));
+  const password = String(body.password || "").trim();
+  if (password) {
+    if (password.length < 6) { const e = new Error("รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"); e.status = 400; throw e; }
+    sets.push("password_hash = ?"); vals.push(bcrypt.hashSync(password, 10));
   }
   if (!sets.length) { const e = new Error("ไม่มีข้อมูลให้แก้ไข"); e.status = 400; throw e; }
   vals.push(userId);
