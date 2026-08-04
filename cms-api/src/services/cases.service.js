@@ -2,6 +2,7 @@
 // and implements case creation + workflow transitions.
 const pool = require("../db");
 const sla = require("./sla.service");
+const { SUPERVISOR_ROLES, isSupervisor } = require("../auth/roles");
 
 const CASE_SELECT = `
   SELECT c.*, s.name AS source_name, ch.name AS channel_name, d.name AS district_name, sd.name AS subdistrict_name, cu.name AS created_by_name
@@ -413,7 +414,7 @@ async function createCase(payload, user) {
     } else {
       await addTimeline(conn, id, { title: "สร้างเคสในระบบ", user: user.name, kind: "create" });
       // heads/admins have the approval queue → notify them of the new case
-      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคสใหม่รออนุมัติ: ${payload.title}`, caseId: id });
+      await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "info", title: `เคสใหม่รออนุมัติ: ${payload.title}`, caseId: id });
     }
 
     await conn.commit();
@@ -508,7 +509,7 @@ async function decision(id, path, reason, byName) {
     await addTimeline(conn, id, { title: `${d.line}${why ? ` — เหตุผล: ${why}` : ""}`, user: byName, kind: "decision" });
     // course change after the investigation stage → heads/admins should know
     if (c.status !== "02") {
-      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคส ${caseRef(c)} เปลี่ยนแนวทาง: ${d.label}`, caseId: id });
+      await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "info", title: `เคส ${caseRef(c)} เปลี่ยนแนวทาง: ${d.label}`, caseId: id });
     }
     await conn.commit();
   } catch (e) {
@@ -565,7 +566,7 @@ async function closeFollowupCase(id, user) {
       await conn.query("UPDATE cases SET closed_at = ? WHERE id = ?", [today, id]);
       await addTimeline(conn, id, { title: `ปิดเคส — สิ้นสุด${FOLLOWUP_LABEL[c.status]}`, user: user.name, kind: "close" });
     }
-    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "success", title: `เคส ${caseRef(c)} ปิดแล้ว`, caseId: id });
+    await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "success", title: `เคส ${caseRef(c)} ปิดแล้ว`, caseId: id });
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -584,7 +585,7 @@ async function sendFollowupToBoard(id, user) {
     await conn.beginTransaction();
     await conn.query("UPDATE cases SET status_code = '03' WHERE id = ?", [id]);
     await addTimeline(conn, id, { title: "ส่งเข้าคณะกรรมการเพื่อพิจารณาอีกครั้ง (จากขั้นแจ้งความ/ดำเนินคดี)", user: user.name, kind: "decision" });
-    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคส ${caseRef(c)} ส่งเข้าคณะกรรมการเพื่อพิจารณาอีกครั้ง`, caseId: id });
+    await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "info", title: `เคส ${caseRef(c)} ส่งเข้าคณะกรรมการเพื่อพิจารณาอีกครั้ง`, caseId: id });
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -755,7 +756,7 @@ async function savePayment(id, fineId, paidDate, amount, byName) {
     if (allPaid) {
       await addTimeline(conn, id, { title: "ค่าปรับทั้งหมดชำระครบ — รอเจ้าหน้าที่ปิดเคส", user: "—", kind: "fine" });
       // assignees + fine officers close the case; heads/admins oversee it
-      const payRecipients = [...c.assignees, ...await userIdsForRoles(conn, ["head", "admin", "fine"])];
+      const payRecipients = [...c.assignees, ...await userIdsForRoles(conn, [...SUPERVISOR_ROLES, "fine"])];
       await notifyUsers(conn, payRecipients, { icon: "success", title: `เคส ${caseRef(c)} ชำระค่าปรับครบแล้ว — พร้อมปิดเคส`, caseId: id });
     }
     await conn.commit();
@@ -778,7 +779,7 @@ async function closeFineCase(id, byName) {
     await conn.beginTransaction();
     await conn.query("UPDATE cases SET status_code = '05' WHERE id = ?", [id]);
     await addTimeline(conn, id, { title: "ปิดเคส: ยุติคดี (ชำระค่าปรับครบ)", user: byName, kind: "close" });
-    await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "success", title: `เคส ${caseRef(c)} ปิดแล้ว (ยุติคดี)`, caseId: id });
+    await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "success", title: `เคส ${caseRef(c)} ปิดแล้ว (ยุติคดี)`, caseId: id });
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -952,7 +953,7 @@ async function setEtracking(id, etracking, user) {
   if (!value) { const e = new Error("กรุณากรอกเลข E-tracking"); e.status = 400; throw e; }
   const c = await fetchOr404(id);
   const allowed =
-    ["head", "admin"].includes(user.roleId) ||
+    isSupervisor(user.roleId) ||
     c.assignees.includes(user.userId) ||
     c.createdByUserId === user.userId;
   if (!allowed) { const e = new Error("เพิ่มเลข E-tracking ได้เฉพาะผู้สร้างเคส เจ้าหน้าที่ที่ได้รับมอบหมาย หรือหัวหน้า/แอดมิน"); e.status = 403; throw e; }
@@ -981,12 +982,12 @@ async function submitCase(id, user) {
     if (c.isDraft) {
       await conn.query("UPDATE cases SET is_draft = 0 WHERE id = ?", [id]);
       await addTimeline(conn, id, { title: "ส่งขออนุมัติหัวหน้ากลุ่มงาน", user: user.name, kind: "create" });
-      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคสใหม่รออนุมัติ: ${c.title}`, caseId: id });
+      await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "info", title: `เคสใหม่รออนุมัติ: ${c.title}`, caseId: id });
     } else {
       // returned case fixed by its creator → back into the approval queue
       await conn.query("UPDATE cases SET returned = 0, return_reason = NULL WHERE id = ?", [id]);
       await addTimeline(conn, id, { title: "แก้ไขและส่งขออนุมัติอีกครั้ง", user: user.name, kind: "create" });
-      await notifyUsers(conn, await userIdsForRoles(conn, ["head", "admin"]), { icon: "info", title: `เคส ${caseRef(c)} แก้ไขแล้ว ส่งขออนุมัติอีกครั้ง`, caseId: id });
+      await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "info", title: `เคส ${caseRef(c)} แก้ไขแล้ว ส่งขออนุมัติอีกครั้ง`, caseId: id });
     }
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }

@@ -8,13 +8,14 @@ import { AssignModal } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
 import { api } from "@/lib/api";
+import { isHeadLevel, SUPERVISOR_ROLES } from "@/lib/roles";
 
 
 export default function DashboardPage() {
   const { role } = useApp();
   const { cases, loading, reload } = useAllCases();
   if (loading) return <main className="page"><div className="muted">กำลังโหลด…</div></main>;
-  if (role.id === "head") return <HeadDashboard cases={cases} reload={reload} />;
+  if (isHeadLevel(role.id)) return <HeadDashboard cases={cases} reload={reload} />;
   return <OfficerDashboard cases={cases} />;
 }
 
@@ -259,7 +260,7 @@ function OfficerDashboard({ cases }) {
               <option value="90">90 วันล่าสุด</option><option value="365">ปีนี้</option>
             </select>
             <button className="btn btn-outline" onClick={() => router.push("/reports")}><Icon name="chart" size={16} /> ดู Dashboard เต็ม</button>
-            {["supply", "head", "admin"].includes(role.id) && (
+            {["supply", ...SUPERVISOR_ROLES].includes(role.id) && (
               <button className="btn btn-primary" onClick={() => router.push("/cases/new")}><Icon name="plus" size={16} /> สร้างเคสใหม่</button>
             )}
           </div>

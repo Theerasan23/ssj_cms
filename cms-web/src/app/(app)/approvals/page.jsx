@@ -8,6 +8,7 @@ import { AssignModal, ExtendSlaModal } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
 import { api } from "@/lib/api";
+import { isSupervisor } from "@/lib/roles";
 
 
 export default function ApprovalsPage() {
@@ -22,14 +23,14 @@ export default function ApprovalsPage() {
   const [returnReason, setReturnReason] = useState("");
   const [extendFor, setExtendFor] = useState(null);
 
-  // Only the group head (and admin) may approve & assign.
-  if (!["head", "admin"].includes(role.id)) {
+  // Only the group head / deputy head (and admin) may approve & assign.
+  if (!isSupervisor(role.id)) {
     return (
       <main className="page">
         <div className="card">
           <div className="table-empty">
             <div className="empty-icon"><Icon name="lock" size={26} /></div>
-            <div style={{ fontWeight: 600 }}>เฉพาะหัวหน้ากลุ่มงาน / Admin เท่านั้น</div>
+            <div style={{ fontWeight: 600 }}>เฉพาะหัวหน้ากลุ่มงาน / รองหัวหน้ากลุ่มงาน / Admin เท่านั้น</div>
             <div className="small">หน้านี้สำหรับอนุมัติและมอบหมายเคสที่เจ้าหน้าที่ส่งเข้ามา</div>
             <button className="btn btn-primary" onClick={() => router.push("/dashboard")}>กลับหน้าหลัก</button>
           </div>

@@ -272,7 +272,7 @@ function UserManager() {
         <div><h3>ผู้ใช้และสิทธิ์</h3><div className="card-sub">ทุกบทบาทเป็นบัญชีเข้าสู่ระบบ — สิทธิ์เป็นไปตามขั้นตอนของ flow ด้านล่าง</div></div>
         <button className="btn btn-primary btn-sm" onClick={() => setEditing({ row: { name: "", roleId: "officer", email: "", phone: "" }, isNew: true })}><Icon name="plus" size={14} /> เพิ่มผู้ใช้</button>
       </div>
-      {/* สิทธิ์ตาม flow: พัสดุสร้างเคส → หัวหน้าอนุมัติ+มอบหมาย → เจ้าหน้าที่ดำเนินการ → ค่าปรับเฉพาะขั้นชำระ */}
+      {/* สิทธิ์ตาม flow: ธุรการสร้างเคส → หัวหน้า/รองหัวหน้าอนุมัติ+มอบหมาย → เจ้าหน้าที่ดำเนินการ → ค่าปรับเฉพาะขั้นชำระ */}
       <div className="card-body" style={{ borderBottom: "1px solid var(--border)" }}>
         <div className="stack-sm">
           {roles.map((r) => (

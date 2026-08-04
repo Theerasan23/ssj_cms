@@ -7,6 +7,7 @@ import { StatusBadge, SLABadge, ChipPicker } from "@/components/ui";
 import { ExportButtons } from "@/components/ExportButtons";
 import { useApp } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
+import { SUPERVISOR_ROLES } from "@/lib/roles";
 
 export default function CaseListPage() {
   return (
@@ -86,7 +87,7 @@ function CaseList() {
               { header: "SLA", value: (c) => cms.caseSla(c).label },
               { header: "วันลงรับ POST", value: (c) => cms.fmtThaiDate(c.postDate) },
             ]} filename="cases" size="md" />
-            {["supply", "head", "admin"].includes(role.id) && (
+            {["supply", ...SUPERVISOR_ROLES].includes(role.id) && (
               <button className="btn btn-primary" onClick={() => router.push("/cases/new")}><Icon name="plus" size={16} /> สร้างเคสใหม่</button>
             )}
           </div>

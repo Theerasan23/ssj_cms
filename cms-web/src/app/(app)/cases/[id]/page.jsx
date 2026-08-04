@@ -7,6 +7,7 @@ import { StatusBadge, SLABadge, Avatar, Tabs, DataCard, FormField, SLATimelineHo
 import { AssignModal, InvestigationModal, BoardModal, FineModal, FollowupModal, ExtendSlaModal, fmtTimestamp } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
+import { isSupervisor } from "@/lib/roles";
 
 // ป้าย/ไอคอนของแนวทางที่เลือกจากการ์ด 4 ปุ่ม (ตาราง case_decisions)
 const DECISION_UI = {
@@ -56,14 +57,14 @@ export default function CaseDetailPage() {
     );
   }
 
-  const canAssign = ["head", "admin"].includes(role.id);
+  const canAssign = isSupervisor(role.id);
   const isAssignee = c.assignees.includes(role.userId);
   const isCreator = c.createdByUserId === role.userId;
   // ขั้นตอน workflow หลังมอบหมาย — หัวหน้า/แอดมิน หรือเจ้าหน้าที่ดำเนินการที่ได้รับมอบหมาย
   const canWork = canAssign || isAssignee;
   // ขั้นชำระค่าปรับ (04) — เพิ่มเจ้าหน้าที่ค่าปรับ (role fine) เข้ามาทำงานส่วนนี้โดยเฉพาะ
   const canFine = canWork || role.id === "fine";
-  // จัดการไฟล์แนบ/แก้ข้อมูล — ผู้สร้าง (พัสดุ) ทำได้เฉพาะตอนยังรอมอบหมาย
+  // จัดการไฟล์แนบ/แก้ข้อมูล — ผู้สร้าง (ธุรการ) ทำได้เฉพาะตอนยังรอมอบหมาย
   const canEdit = canWork || (isCreator && c.status === "01") || (role.id === "fine" && c.status === "04");
   const closedCase = c.closed;
   const sla = cms.caseSla(c);
@@ -76,8 +77,8 @@ export default function CaseDetailPage() {
   // E-tracking ไม่บังคับตอนสร้าง — ผู้สร้างเคสหรือผู้รับมอบหมาย (รวมหัวหน้า/แอดมิน) เพิ่ม/แก้ไขภายหลังได้
   const canSetEtracking = canWork || isCreator;
   const canUnlock = role.id === "admin";
-  // หัวหน้า (และแอดมิน) ขยายกำหนด SLA ได้โดยระบุจำนวนวัน
-  const canExtend = ["head", "admin"].includes(role.id);
+  // หัวหน้า/รองหัวหน้า (และแอดมิน) ขยายกำหนด SLA ได้โดยระบุจำนวนวัน
+  const canExtend = isSupervisor(role.id);
 
   function guardLocked() {
     if (locked) {

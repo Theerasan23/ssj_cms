@@ -5,18 +5,19 @@ import { Icon } from "@/components/Icon";
 import { CaseForm, blankCaseForm } from "@/components/CaseForm";
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
+import { SUPERVISOR_ROLES } from "@/lib/roles";
 
 export default function CaseCreatePage() {
   const { cms, actions, role } = useApp();
   const toast = useToasts();
   const router = useRouter();
 
-  // ตาม flow ใหม่ เจ้าหน้าที่พัสดุเป็นผู้สร้างเคส (หัวหน้า/Admin ทำแทนได้)
-  if (!["supply", "head", "admin"].includes(role.id)) {
+  // ตาม flow ใหม่ เจ้าหน้าที่ธุรการเป็นผู้สร้างเคส (หัวหน้า/รองหัวหน้า/Admin ทำแทนได้)
+  if (!["supply", ...SUPERVISOR_ROLES].includes(role.id)) {
     return (
       <main className="page"><div className="card"><div className="table-empty">
         <div className="empty-icon"><Icon name="lock" size={26} /></div>
-        <div style={{ fontWeight: 600 }}>เฉพาะเจ้าหน้าที่พัสดุ (หรือหัวหน้า/Admin) เท่านั้นที่สร้างเคสใหม่ได้</div>
+        <div style={{ fontWeight: 600 }}>เฉพาะเจ้าหน้าที่ธุรการ (หรือหัวหน้า/รองหัวหน้า/Admin) เท่านั้นที่สร้างเคสใหม่ได้</div>
         <button className="btn btn-primary" onClick={() => router.push("/cases")}>กลับสู่รายการเคส</button>
       </div></div></main>
     );
