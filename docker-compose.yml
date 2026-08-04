@@ -41,6 +41,9 @@ services:
         # baked into the client bundle at BUILD time → must be reachable from the BROWSER.
         # In prod set PUBLIC_API_URL in .env, then rebuild: docker compose build web
         NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3022/api}
+        # sub-path the site is served from (no sub-domain available). Also baked in at
+        # BUILD time — changing WEB_BASE_PATH requires: docker compose build web
+        NEXT_PUBLIC_BASE_PATH: ${WEB_BASE_PATH-/cms}
     container_name: cms-web
     restart: unless-stopped
     depends_on:
@@ -49,8 +52,11 @@ services:
       PORT: 3021
       # server-side calls (NextAuth) reach the api container by service name (internal — never change)
       API_URL: http://api:3022/api
-      # public URL of the site (NextAuth uses it for callbacks/cookies). Set PUBLIC_WEB_URL in prod.
-      NEXTAUTH_URL: ${PUBLIC_WEB_URL:-http://localhost:3021}
+      # must match the build arg above — `next start` reads it to route the sub-path
+      NEXT_PUBLIC_BASE_PATH: ${WEB_BASE_PATH-/cms}
+      # public URL of the site. With a basePath, NextAuth needs the FULL path to its route
+      # handler (<origin><basePath>/api/auth), not just the origin.
+      NEXTAUTH_URL: ${PUBLIC_WEB_URL:-http://localhost:3021}${WEB_BASE_PATH-/cms}/api/auth
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-dev-compose-nextauth-secret-change-me}
     ports:
       - "${WEB_PORT:-3021}:3021"

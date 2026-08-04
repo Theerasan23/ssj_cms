@@ -319,9 +319,21 @@ export default function CaseDetailPage() {
           </div>
         )}
       </div>
-      <div className="card-divider" />
-      <div style={{ padding: "16px 22px" }}>
-        <div className="small muted" style={{ marginBottom: 10, fontWeight: 600, color: "var(--text)" }}>SLA Timeline</div>
+    </div>
+  );
+
+  // Full-width row above the two-column grid — the journey can run long once a case
+  // loops back through a stage, so it gets the whole width instead of the left column.
+  const SlaPanel = (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-header">
+        <div>
+          <h3>SLA Timeline</h3>
+          <div className="card-sub">ลำดับการดำเนินการจริง — ขั้นตอนที่ย้อนกลับมาซ้ำจะแสดงเป็นรายการใหม่ตามวันที่</div>
+        </div>
+        {!closedCase && <SLABadge sla={sla} />}
+      </div>
+      <div className="card-body" style={{ paddingTop: 6 }}>
         <SLATimelineHorizontal c={c} />
       </div>
     </div>
@@ -666,6 +678,8 @@ export default function CaseDetailPage() {
           )}
         </div>
       )}
+
+      {SlaPanel}
 
       <div className="detail-grid-2col">
         <div className="stack">{StatusPanel}{AttachmentsPanel}</div>

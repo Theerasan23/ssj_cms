@@ -695,8 +695,13 @@ table.data .actions-cell { text-align: right; }
 .avatar-stack .more { background: var(--surface-2); color: var(--text-muted); }
 
 /* ---------------- Timeline (SLA progress) ---------------- */
-.sla-timeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; padding: 4px; }
-.sla-step { position: relative; padding: 14px 18px; }
+/* --steps is set inline by SLATimelineHorizontal: the track grows with the number of
+   milestones, so a case that loops back through a stage can scroll sideways. */
+.sla-timeline {
+  display: grid; grid-template-columns: repeat(var(--steps, 4), minmax(132px, 1fr));
+  gap: 0; padding: 4px; overflow-x: auto;
+}
+.sla-step { position: relative; padding: 14px 18px; min-width: 0; }
 .sla-step:not(:last-child)::after {
   content: ""; position: absolute; top: 32px; right: -8px; width: 16px; height: 2px;
   background: var(--border);

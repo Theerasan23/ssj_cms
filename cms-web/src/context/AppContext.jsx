@@ -7,6 +7,10 @@ import { fmtThaiDate, fmtThaiDateShort, fmtMoney } from "@/lib/format";
 import * as SLA from "@/lib/sla";
 import { Icon } from "@/components/Icon";
 
+// NextAuth resolves callbackUrl against the origin, not the app's basePath, so a bare
+// "/login" would land outside the app when it is served from a sub-path.
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
 export const useToasts = () => {
@@ -81,7 +85,7 @@ export function AppProvider({ children }) {
   }, [user, loadMaster, loadNotifications]);
 
   const actions = useMemo(() => ({
-    logout() { clearToken(); setUser(null); signOut({ callbackUrl: "/login" }); },
+    logout() { clearToken(); setUser(null); signOut({ callbackUrl: `${BASE_PATH}/login` }); },
     async markAllRead() {
       setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
       try { await api.post("/notifications/read-all", {}); } catch { /* ignore */ }

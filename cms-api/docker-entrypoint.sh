@@ -17,7 +17,12 @@ const m = require('mysql2/promise');
     const [r] = await c.query('SELECT COUNT(*) AS n FROM cases');
     await c.end();
     process.exit(r[0].n > 0 ? 0 : 10);   // 0 = already has data, 10 = empty
-  } catch (e) { process.exit(0); }        // connect/query error → do NOT seed (fail safe)
+  } catch (e) {
+    // A missing \`cases\` table means the database is brand new → it still needs the
+    // schema. Any other failure (wrong host/credentials/db) must NOT seed: we cannot
+    // tell what is in there, and schema.sql starts with DROP TABLE.
+    process.exit(e.code === 'ER_NO_SUCH_TABLE' ? 10 : 0);
+  }
 })();
 "; then
     echo "cms-api: database already has data (or unreachable) — skipping seed."

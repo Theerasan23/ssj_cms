@@ -151,27 +151,106 @@ export function FileUpload({ files = [], onChange, accept = "image/*,application
   );
 }
 
+const FOLLOWUP_STEP = {
+  "06": { label: "ส่งต่อหน่วยงาน", icon: "send" },
+  "07": { label: "แจ้งความ/ดำเนินคดี", icon: "gavel" },
+  "09": { label: "เสนอนายแพทย์ยุติ", icon: "check-circle" },
+};
+
+const d10 = (v) => (v ? String(v).slice(0, 10) : "");
+
+// The workflow lets a case go backwards (e.g. คณะกรรมการ → ลงพื้นที่ → คณะกรรมการ again),
+// so the timeline is built from what was actually recorded, in date order, instead of a
+// fixed four-stage track — a stage the case returns to appears again rather than merging
+// into the earlier visit. Stages not reached yet are appended as muted "รอ" steps.
+function journeyOf(c) {
+  const done = [];
+  if (c.assignedAt) done.push({ key: "assign", label: "มอบหมาย", icon: "users", date: d10(c.assignedAt) });
+
+  (c.investigations || []).forEach((ev, i) => done.push({
+    key: `inv-${ev.id ?? i}`,
+    label: ev.kind === "site" ? "ลงพื้นที่ตรวจสอบ" : "เชิญพบชี้แจง",
+    icon: ev.kind === "site" ? "map-pin" : "users",
+    date: d10(ev.date),
+  }));
+
+  (c.boardMeetings || []).forEach((m, i) => done.push({
+    key: `board-${m.id ?? i}`,
+    label: "เข้าคณะกรรมการ",
+    note: m.meetingNo ? `ครั้งที่ ${m.meetingNo}` : null,
+    icon: "users",
+    date: d10(m.meetingDate || m.createdAt),
+    pending: !m.resolution, // proposed but no resolution yet
+  }));
+
+  (c.followups || []).forEach((f, i) => {
+    const ui = FOLLOWUP_STEP[c.status] || { label: "ติดตามผล", icon: "send" };
+    done.push({ key: `fu-${f.id ?? i}`, label: ui.label, note: f.destination || null, icon: ui.icon, date: d10(f.date) });
+  });
+
+  (c.fines || []).filter((f) => f.paid).forEach((f, i) => done.push({
+    key: `fine-${i}`, label: "ชำระค่าปรับ", icon: "money", date: d10(f.paidDate),
+  }));
+
+  // Stable sort keeps same-date items in the order pushed above; undated items inherit
+  // the previous item's date so they never jump to the front.
+  let last = "";
+  done.forEach((s) => { if (s.date) last = s.date; else s.date = last; });
+  done.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+
+  return done;
+}
+
 export function SLATimelineHorizontal({ c }) {
   const snap = SLA.caseSlaSnapshot(c);
+  const past = journeyOf(c);
+
+  // What still lies ahead on the default track, so an untouched case keeps the familiar
+  // four-stage overview instead of showing a single lonely step.
+  const investDone = (c.investigations || []).length > 0 || !!(c.investigation && (c.investigation.siteVisitDate || c.investigation.meetingDate));
+  const boardDone = (c.boardMeetings || []).length > 0 || !!(c.board && c.board.meetingDate);
+  const fineDone = !!(c.fines && c.fines.length && c.fines.every((f) => f.paid));
+  const ahead = [
+    { key: "assign", label: "มอบหมาย", sla: snap.stageAssign, reached: !!c.assignedAt },
+    { key: "invest", label: "ตรวจสอบ", sla: snap.stageInvest, reached: investDone },
+    { key: "board", label: "กรรมการ", sla: snap.stageBoard, reached: boardDone },
+    { key: "fine", label: "เปรียบเทียบ", sla: snap.stageFine, reached: fineDone },
+  ].filter((s) => !s.reached);
+
+  const closed = !!c.closed;
+  // the first unreached stage carries the live SLA countdown
+  const currentKey = closed ? null : ahead[0]?.key;
+
   const steps = [
-    { key: "assign", label: "มอบหมาย", sla: snap.stageAssign, done: !!c.assignedAt, n: 1 },
-    { key: "invest", label: "ตรวจสอบ", sla: snap.stageInvest, done: !!(c.investigation && (c.investigation.siteVisitDate || c.investigation.meetingDate)), n: 2 },
-    { key: "board", label: "กรรมการ", sla: snap.stageBoard, done: !!(c.board && c.board.meetingDate), n: 3 },
-    { key: "fine", label: "เปรียบเทียบ", sla: snap.stageFine, done: !!(c.fines && c.fines.length && c.fines.every((f) => f.paid)), n: 4 },
+    ...past.map((s) => ({ ...s, state: s.pending ? "current" : "done" })),
+    ...(closed ? [] : ahead.map((s) => ({
+      key: s.key, label: s.label, icon: null,
+      state: s.key === currentKey ? "current" : "wait",
+      sla: s.key === currentKey ? s.sla : null,
+    }))),
   ];
-  const activeIdx = steps.findIndex((s) => !s.done);
+  if (closed) steps.push({ key: "closed", label: "ปิดเคส", icon: "check-circle", state: "done", date: "" });
+
   return (
-    <div className="sla-timeline">
+    // --steps drives the column count from CSS so the mobile media query can still
+    // override the whole track (an inline grid-template would beat it)
+    <div className="sla-timeline" style={{ "--steps": Math.max(steps.length, 1) }}>
       {steps.map((s, i) => {
-        let cls = "";
-        if (s.done) cls = "done";
-        else if (i === activeIdx) cls = "current";
-        if (s.sla && s.sla.kind === "overdue" && i === activeIdx) cls += " overdue";
+        let cls = s.state === "done" ? "done" : s.state === "current" ? "current" : "";
+        if (s.sla && s.sla.kind === "overdue") cls += " overdue";
         return (
           <div key={s.key} className={`sla-step ${cls}`}>
-            <div className="step-circle">{s.done ? <Icon name="check" size={16} stroke={2.5} /> : s.n}</div>
+            <div className="step-circle">
+              {s.state === "done" ? <Icon name="check" size={16} stroke={2.5} />
+                : s.icon ? <Icon name={s.icon} size={16} /> : i + 1}
+            </div>
             <div className="step-label">{s.label}</div>
-            <div className="step-meta">{s.done ? "เสร็จแล้ว" : (i === activeIdx ? <SLABadge sla={s.sla} /> : "รอ")}</div>
+            <div className="step-meta">
+              {s.sla ? <SLABadge sla={s.sla} />
+                : s.note ? s.note
+                  : s.date ? s.date
+                    : s.state === "wait" ? "รอ" : "เสร็จแล้ว"}
+            </div>
           </div>
         );
       })}
