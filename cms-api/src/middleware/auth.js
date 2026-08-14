@@ -13,7 +13,7 @@ function requireAuth(req, res, next) {
   }
 }
 
-// Restricts a route to certain role ids (admin/head/supply/officer/fine/exec)
+// Restricts a route to certain role ids (admin/head/deputy/supply/officer/fine/exec)
 function requireRole(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.roleId)) {

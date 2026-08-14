@@ -122,8 +122,8 @@ CREATE TABLE law_sections (
   CONSTRAINT fk_section_law FOREIGN KEY (law_id) REFERENCES laws(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- workflow roles: admin | head | supply (พัสดุ สร้างเคส) | officer (ดำเนินการ ผู้รับมอบหมาย)
---                 | fine (ค่าปรับ เฉพาะขั้นชำระ) | exec (view only)
+-- workflow roles: admin | head | deputy (รองหัวหน้า สิทธิ์เท่าหัวหน้า) | supply (ธุรการ สร้างเคส)
+--                 | officer (ดำเนินการ ผู้รับมอบหมาย) | fine (ค่าปรับ เฉพาะขั้นชำระ) | exec (view only)
 CREATE TABLE roles (
   id         VARCHAR(16)  PRIMARY KEY,
   name       VARCHAR(128) NOT NULL,

@@ -13,7 +13,7 @@ import { isHeadLevel, SUPERVISOR_ROLES, seesOwnCasesOnly } from "@/lib/roles";
 // SLA stages in workflow order. `short` is the chip label (the configured names are too
 // long for a KPI card); the full label + day count come from /master at render time.
 const SLA_STAGES = [
-  { stage: "assign", short: "มอบหมาย" },
+  { stage: "assign", short: "รอมอบหมาย" },
   { stage: "invest", short: "ตรวจสอบ" },
   { stage: "board", short: "กรรมการ" },
   { stage: "fine", short: "ค่าปรับ" },
@@ -244,19 +244,31 @@ function OfficerDashboard({ cases }) {
   const inPeriod = cases.filter((c) => c.createdAt && c.createdAt >= cutoff);
 
   const totalCases = cases.length;
-  const inProgress = cases.filter((c) => !c.closed).length;
+  const activeCases = cases.filter((c) => !c.closed);
+  const inProgress = activeCases.length;
   const closedCases = cases.filter((c) => c.closed).length;
-  const nearList = cases.filter((c) => !c.closed && cms.caseSla(c).kind === "near");
-  const nearCases = nearList.length;
-  const overdueCases = cases.filter((c) => !c.closed && cms.caseSla(c).kind === "overdue").length;
+  const overdueCases = activeCases.filter((c) => cms.caseSla(c).kind === "overdue").length;
 
-  // "ใกล้ครบ SLA" แยกตามขั้นตอน — caseSla() คืนค่าของขั้นที่เคสกำลังอยู่ จึงจัดกลุ่มจากสถานะ
-  const nearByStage = SLA_STAGES.map((s) => ({
-    ...s,
-    label: cms.MASTER.slaConfig?.find((x) => x.stage === s.stage)?.label || s.short,
-    days: cms.MASTER.slaDays?.[s.stage],
-    count: nearList.filter((c) => STAGE_BY_STATUS[c.status] === s.stage).length,
-  }));
+  // งานค้างแยกตามขั้นตอนที่เคสอยู่ตอนนี้ — caseSla() คืนค่าของขั้นที่เคสกำลังอยู่ จึงจัดกลุ่มจากสถานะ.
+  // นับทุกเคสที่ยังไม่ปิดในขั้นนั้น ไม่ใช่เฉพาะที่ใกล้ครบ SLA: เกณฑ์ "ใกล้ครบ" คือ ≤ 3 วันเท่ากัน
+  // ทุกขั้น ขั้นที่ยาวอย่างกรรมการ/ค่าปรับ (60 วัน) จึงแทบไม่เคยขึ้นเลข การ์ดเลยว่างเปล่าตลอด
+  // ตัวเลข SLA ไม่ได้หายไปไหน — ย้ายไปอยู่บรรทัดล่างของการ์ดแทน
+  const byStage = SLA_STAGES.map((s) => {
+    const at = activeCases.filter((c) => STAGE_BY_STATUS[c.status] === s.stage);
+    const kinds = at.map((c) => cms.caseSla(c).kind);
+    return {
+      ...s,
+      label: cms.MASTER.slaConfig?.find((x) => x.stage === s.stage)?.label || s.short,
+      days: cms.MASTER.slaDays?.[s.stage],
+      count: at.length,
+      near: kinds.filter((k) => k === "near").length,
+      overdue: kinds.filter((k) => k === "overdue").length,
+    };
+  });
+  // เคสที่ยังไม่ปิดแต่ไม่ได้อยู่ในสี่ขั้นนี้ = สถานะติดตามผล (06 ส่งต่อ / 07 ดำเนินคดี /
+  // 09 เสนอนายแพทย์ยุติ) ซึ่งไม่มีกำหนด SLA แล้ว แยกบอกไว้ต่างหากเพื่อให้ยอดรวมกระทบกัน
+  const stageTotal = byStage.reduce((n, s) => n + s.count, 0);
+  const followupTotal = inProgress - stageTotal;
 
   const statusCounts = Object.keys(cms.STATUS).map((code) => ({ code, count: inPeriod.filter((c) => c.status === code).length, label: cms.STATUS[code].label }));
   const maxStatus = Math.max(1, ...statusCounts.map((s) => s.count));
@@ -314,21 +326,32 @@ function OfficerDashboard({ cases }) {
         </div>
       </div>
 
-      {/* ใกล้ครบ SLA แยกเป็น card ละขั้นตอน — ขั้นที่ยาว (ตรวจสอบ/กรรมการ/ค่าปรับ) แทบไม่เคย
-          โผล่ในตัวเลขรวม เพราะเกณฑ์ ≤ 3 วันเท่ากันทุกขั้น การแยก card ทำให้เห็นครบทุกขั้น */}
+      {/* งานค้างแยกเป็น card ละขั้นตอน — ตัวเลขใหญ่คือจำนวนเคสที่ค้างอยู่ในขั้นนั้น
+          บรรทัดล่างเตือนเมื่อขั้นนั้นมีเคสเกิน/ใกล้ครบ SLA ไม่งั้นบอกกรอบเวลาที่ตั้งไว้ */}
       <div className="row" style={{ marginTop: 22, marginBottom: 10, gap: 10, alignItems: "baseline" }}>
-        <h3 style={{ margin: 0, fontSize: 15 }}>ใกล้ครบกำหนด SLA (≤ 3 วัน)</h3>
-        <span className="muted small">แยกตามขั้นตอน · รวม {nearCases} เคส</span>
+        <span className="muted small">
+          เคสที่ยังไม่ปิด · รวม {stageTotal} เคส
+          {followupTotal > 0 ? ` · อยู่ระหว่างติดตามผลอีก ${followupTotal} เคส` : ""}
+        </span>
       </div>
       <div className="kpi-grid">
-        {nearByStage.map((s) => (
-          <div key={s.stage} className={`kpi-card ${s.count > 0 ? "warn" : "is-zero"}`}>
-            <div className="kpi-label">{s.short}</div>
-            <div className="kpi-value">{s.count}</div>
-            <div className="kpi-trend">{s.label}{s.days ? ` · ภายใน ${s.days} วัน` : ""}</div>
-            <div className="kpi-icon"><Icon name="clock" size={18} /></div>
-          </div>
-        ))}
+        {byStage.map((s) => {
+          const alerts = [];
+          if (s.overdue > 0) alerts.push(`เกินเวลา ${s.overdue}`);
+          if (s.near > 0) alerts.push(`ใกล้ครบ ${s.near}`);
+          return (
+            <div key={s.stage} className={`kpi-card ${s.overdue > 0 ? "danger" : s.near > 0 ? "warn" : s.count === 0 ? "is-zero" : ""}`}>
+              <div className="kpi-label">{s.short}</div>
+              <div className="kpi-value">{s.count}</div>
+              <div className={`kpi-trend${s.overdue > 0 ? " down" : ""}`}>
+                {alerts.length > 0
+                  ? <><Icon name="alert" size={14} /> {alerts.join(" · ")} เคส</>
+                  : <>{s.label}{s.days ? ` · ภายใน ${s.days} วัน` : ""}</>}
+              </div>
+              <div className="kpi-icon"><Icon name="clock" size={18} /></div>
+            </div>
+          );
+        })}
       </div>
 
       <div className="section-row" style={{ marginTop: 20 }}>

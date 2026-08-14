@@ -76,7 +76,7 @@ router.get("/:id", async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-// POST /api/cases — create (เจ้าหน้าที่พัสดุ; head/admin as backstop)
+// POST /api/cases — create (เจ้าหน้าที่ธุรการ; head/deputy/admin as backstop)
 router.post("/", requireRole("supply", ...SUPERVISOR_ROLES), async (req, res, next) => {
   try {
     const id = await cases.createCase(req.body || {}, req.user);

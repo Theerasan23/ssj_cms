@@ -1,5 +1,5 @@
 // One-time migration (2026-07-08) — workflow rework:
-//   * roles: + supply (เจ้าหน้าที่พัสดุ), + fine (เจ้าหน้าที่ค่าปรับ),
+//   * roles: + supply (เจ้าหน้าที่ธุรการ), + fine (เจ้าหน้าที่ค่าปรับ),
 //     officer relabelled "เจ้าหน้าที่ดำเนินการ"
 //   * every officer gets a login (user account) — assignment now targets users
 //   * case_assignees.officer_id → user_id (FK users)

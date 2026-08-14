@@ -14,6 +14,14 @@
       "runtimeArgs": ["--prefix", "cms-api", "run", "dev"],
       "port": 3021,
       "autoPort": false
+    },
+    {
+      "//": "production build (same as the Docker image) — for reproducing basePath/routing behaviour that dev mode does not show. Run `npm --prefix cms-web run build` first.",
+      "name": "cms-web-prod",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "cms-web", "run", "start", "--", "-p", "3099"],
+      "port": 3099,
+      "autoPort": false
     }
   ]
 }
