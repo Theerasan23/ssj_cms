@@ -2,7 +2,7 @@
 // and implements case creation + workflow transitions.
 const pool = require("../db");
 const sla = require("./sla.service");
-const { SUPERVISOR_ROLES, isSupervisor } = require("../auth/roles");
+const { SUPERVISOR_ROLES, isSupervisor, canSeeCase } = require("../auth/roles");
 
 const CASE_SELECT = `
   SELECT c.*, s.name AS source_name, ch.name AS channel_name, d.name AS district_name, sd.name AS subdistrict_name, cu.name AS created_by_name
@@ -55,6 +55,8 @@ function buildShape(r, rel) {
     etracking: r.etracking,
     letterNo: r.letter_no,
     letterDate: r.letter_date,
+    docNo: r.doc_no || "",
+    docDate: r.doc_date,
     postNo: r.post_no,
     postDate: r.post_date,
     title: r.title,
@@ -79,6 +81,7 @@ function buildShape(r, rel) {
     },
     product: r.product || "",
     productLicense: r.product_license || "",
+    problemOther: r.problem_other || "",
     // free text since 2026-07 (e.g. "5,000 บาท ตามประกาศฯ") — legacy rows hold the old number as string
     bountyAmount: r.bounty_amount || null,
     bountyRequested: !!r.bounty_requested,
@@ -89,6 +92,7 @@ function buildShape(r, rel) {
     assignees: rel.assignees,
     assignedAt: r.assigned_at,
     assignedBy: r.assigned_by,
+    assignSlaWaived: !!r.assign_sla_waived,
     status: r.status_code,
     lockOverridden: !!r.lock_overridden,
     slaExtensionDays: r.sla_extension_days || 0,
@@ -215,6 +219,8 @@ async function listCases(filters, currentRole) {
   all = all.filter((c) => {
     // drafts are private to their creator until submitted for approval
     if (c.isDraft && !(currentRole && currentRole.userId != null && c.createdByUserId === currentRole.userId)) return false;
+    // เจ้าหน้าที่ดำเนินการเห็นเฉพาะเคสของตัวเอง — บังคับเสมอ ไม่ขึ้นกับ scope ที่ client ส่งมา
+    if (!canSeeCase(c, currentRole)) return false;
     if (scope === "mine" && currentRole) {
       const byMe = currentRole.userId != null && c.createdByUserId === currentRole.userId;
       const assignedToMe = currentRole.userId != null && c.assignees.includes(currentRole.userId);
@@ -280,15 +286,19 @@ async function addNotification(conn, { icon, title, caseId, recipientUserId }) {
   if (recipientUserId == null) return; // no recipient → nothing to notify
   const id = "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 4) + recipientUserId;
   const [rows] = await conn.query("SELECT COALESCE(MAX(ord), 0) + 1 AS n FROM notifications");
+  // time_text stays NULL — it used to be frozen at "เมื่อสักครู่" forever, so every
+  // notification read as brand new. created_at (DB default) is the source of truth now.
   await conn.query(
-    "INSERT INTO notifications (id, icon, title, time_text, unread, case_id, recipient_user_id, ord) VALUES (?, ?, ?, ?, 1, ?, ?, ?)",
-    [id, icon, title, "เมื่อสักครู่", caseId, recipientUserId, rows[0].n]
+    "INSERT INTO notifications (id, icon, title, unread, case_id, recipient_user_id, ord) VALUES (?, ?, ?, 1, ?, ?, ?)",
+    [id, icon, title, caseId, recipientUserId, rows[0].n]
   );
 }
 
 // Fan a notification out to several recipients (deduped).
-async function notifyUsers(conn, userIds, payload) {
-  for (const uid of [...new Set(userIds.filter((x) => x != null))]) {
+// exceptUserId skips the person who performed the action — being told about your own
+// edit is noise, and it is the main reason the bell filled up with useless rows.
+async function notifyUsers(conn, userIds, payload, exceptUserId = null) {
+  for (const uid of [...new Set(userIds.filter((x) => x != null && x !== exceptUserId))]) {
     await addNotification(conn, { ...payload, recipientUserId: uid });
   }
 }
@@ -314,21 +324,30 @@ async function assertAssignableUsers(conn, userIds) {
   return rows;
 }
 
+// The master row is named "อื่น ๆ" (with a space); compare ignoring spaces so a differently
+// spelled variant still counts. Keep in sync with CaseForm.jsx.
+const isOtherProblem = (name) => String(name || "").replace(/\s/g, "") === "อื่นๆ";
+
 // Server-side validation for new cases (defense-in-depth; the form validates too)
 function validateCreate(p) {
   const errors = [];
   const today = sla.TODAY();
   if (!p.title || p.title.length < 5 || p.title.length > 200) errors.push("ชื่อกรณีต้องมี 5–200 ตัวอักษร");
-  if (!p.letterNo) errors.push("กรุณากรอกเลขรับหนังสือ");
-  if (!p.postNo) errors.push("กรุณากรอกเลขรับ POST");
-  if (!p.postDate) errors.push("กรุณาระบุวันลงรับ POST");
+  if (!p.letterNo) errors.push("กรุณากรอกเลขที่ลงรับ สสจ.");
+  // POST no./date are optional — without a post_date the ขั้นมอบหมาย SLA simply
+  // does not start counting (see sla.service.js caseSlaSnapshot)
   if (p.postDate && p.postDate > today) errors.push("วันลงรับ POST เป็นอนาคตไม่ได้");
-  if (p.letterDate && p.letterDate > today) errors.push("วันที่หนังสือเป็นอนาคตไม่ได้");
+  if (p.letterDate && p.letterDate > today) errors.push("วันที่ลงรับ สสจ. เป็นอนาคตไม่ได้");
+  // doc_* are optional, but a document dated in the future is still a typo
+  if (p.docDate && p.docDate > today) errors.push("วันที่ของหนังสือเป็นอนาคตไม่ได้");
   if (!p.complainant || !p.complainant.channel) errors.push("กรุณาเลือกช่องทางการร้องเรียน");
   if (!p.respondent || (!p.respondent.licensee && !p.respondent.business)) errors.push("กรอกผู้รับอนุญาตหรือสถานประกอบการอย่างน้อย 1");
   if (!Array.isArray(p.laws) || p.laws.length === 0) errors.push("เลือกพรบ. อย่างน้อย 1 หมวด");
   if (!p.source) errors.push("เลือกที่มาของผู้ร้อง");
   if (!Array.isArray(p.problems) || p.problems.length === 0) errors.push("เลือกประเภทปัญหาอย่างน้อย 1 ข้อ");
+  else if (p.problems.some(isOtherProblem) && !String(p.problemOther || "").trim()) {
+    errors.push('เลือกประเภทปัญหา "อื่น ๆ" แล้ว กรุณาระบุว่าคืออะไร');
+  }
   if (p.bountyRequested) {
     if (!p.bountyFirstName) errors.push("กรุณากรอกชื่อผู้ประสงค์รับสินบนนำจับ");
     if (!p.bountyLastName) errors.push("กรุณากรอกนามสกุลผู้ประสงค์รับสินบนนำจับ");
@@ -365,14 +384,18 @@ async function assertActionable(id, allowed) {
 
 // ---------- create ----------
 async function createCase(payload, user) {
-  const errors = validateCreate(payload);
-  if (errors.length) { const e = new Error(errors[0]); e.status = 400; e.errors = errors; throw e; }
+  const isDraft = !!payload.draft;
+  // A draft is work-in-progress and saves with whatever is filled in so far; the required
+  // fields are enforced when the creator submits it for approval (see submitCase).
+  if (!isDraft) {
+    const errors = validateCreate(payload);
+    if (errors.length) { const e = new Error(errors[0]); e.status = 400; e.errors = errors; throw e; }
+  }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const id = newCaseId();
     const today = sla.TODAY();
-    const isDraft = !!payload.draft;
     const sourceId = await idByName(conn, "sources", payload.source);
     const channelId = await idByName(conn, "channels", payload.complainant?.channel);
     const districtId = await idByName(conn, "districts", payload.respondent?.district);
@@ -380,15 +403,20 @@ async function createCase(payload, user) {
 
     await conn.query(
       `INSERT INTO cases (
-        id, etracking, letter_no, letter_date, post_no, post_date, title,
-        source_id, product, product_license, bounty_amount, bounty_requested, bounty_first_name, bounty_last_name, bounty_no, description, status_code,
+        id, etracking, letter_no, letter_date, doc_no, doc_date, post_no, post_date, title,
+        source_id, product, product_license, problem_other, bounty_amount, bounty_requested, bounty_first_name, bounty_last_name, bounty_no, description, status_code,
         complainant_name, complainant_phone, complainant_email, complainant_address, complainant_anonymous, complainant_channel_id,
         respondent_licensee, respondent_business, respondent_address, respondent_license_no, respondent_district_id, respondent_subdistrict_id,
         is_draft, created_by, created_by_user_id, created_at
-      ) VALUES (?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?)`,
+      ) VALUES (?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?)`,
       [
-        id, String(payload.etracking || "").trim() || null, payload.letterNo, payload.letterDate || null, payload.postNo, payload.postDate || null, payload.title,
+        // letterNo/postNo/title are no longer guaranteed by validation — a draft may still
+        // be blank. title is NOT NULL, so it falls back to "" rather than null.
+        id, String(payload.etracking || "").trim() || null, payload.letterNo || null, payload.letterDate || null,
+        String(payload.docNo || "").trim() || null, payload.docDate || null,
+        payload.postNo || null, payload.postDate || null, String(payload.title || "").trim(),
         sourceId, payload.product || null, payload.productLicense || null,
+        String(payload.problemOther || "").trim() || null,
         payload.bountyAmount || null,
         payload.bountyRequested ? 1 : 0, payload.bountyFirstName || null, payload.bountyLastName || null, payload.bountyNo || null,
         payload.description || null, "01",
@@ -437,7 +465,13 @@ async function assignCase(id, userIds, byRole, byName, note) {
   try {
     await conn.beginTransaction();
     const assignees = await assertAssignableUsers(conn, userIds);
-    await conn.query("UPDATE cases SET assigned_at = ?, assigned_by = ?, status_code = '02' WHERE id = ?", [sla.TODAY(), byRole, id]);
+    // POST no./date are optional. Assigning while post_date is still empty leaves the
+    // ขั้นมอบหมาย window with no anchor, so waive it here — filling the POST date in
+    // afterwards must not retroactively judge (or lock) a case that already moved on.
+    await conn.query(
+      `UPDATE cases SET assigned_at = ?, assigned_by = ?, status_code = '02',
+        assign_sla_waived = (post_date IS NULL) WHERE id = ?`,
+      [sla.TODAY(), byRole, id]);
     await conn.query("DELETE FROM case_assignees WHERE case_id = ?", [id]);
     for (const uid of userIds) {
       await conn.query("INSERT IGNORE INTO case_assignees (case_id, user_id) VALUES (?, ?)", [id, uid]);
@@ -891,10 +925,25 @@ async function unlockCase(id, byName) {
 
 // Edit a pending case (status 01). Allowed for the creator or head/admin.
 // Editing a returned case re-submits it for approval.
-async function updateCase(id, payload, user) {
-  const errors = validateCreate(payload);
-  if (errors.length) { const e = new Error(errors[0]); e.status = 400; e.errors = errors; throw e; }
+async function updateCase(id, rawPayload, user) {
   const c = await fetchOr404(id);
+  // PATCH means a partial update: the UPDATE below writes every column, so any field the
+  // caller omitted would be overwritten with NULL. Merge onto the stored case first so an
+  // absent key keeps its current value and only what was actually sent changes.
+  const payload = {
+    ...c,
+    ...rawPayload,
+    complainant: { ...c.complainant, ...(rawPayload.complainant || {}) },
+    respondent: { ...c.respondent, ...(rawPayload.respondent || {}) },
+  };
+  // Work-in-progress save of a draft (or a returned case being fixed) keeps whatever is
+  // filled in so far. Only those two states may skip the check — a normal edit still has
+  // to be complete, so payload.draft alone can't be used to sneak past validation.
+  const partialSave = !!rawPayload.draft && (c.isDraft || c.returned);
+  if (!partialSave) {
+    const errors = validateCreate(payload);
+    if (errors.length) { const e = new Error(errors[0]); e.status = 400; e.errors = errors; throw e; }
+  }
   // admin แก้ไขได้ทุกสถานะ (รวมถึงเคสที่ล็อก/ปิดแล้ว) และไม่ต้องเป็นผู้สร้าง
   // ผู้สร้างเคส (คนกรอกเข้าระบบ) และผู้ที่ได้รับมอบหมายจากหัวหน้า แก้ไขได้ทุกสถานะเช่นกัน
   // แต่เคสที่ล็อก (เกิน SLA) แก้ไม่ได้จนกว่าหัวหน้าจะขยายกำหนด หรือแอดมินปลดล็อก
@@ -915,14 +964,17 @@ async function updateCase(id, payload, user) {
 
     await conn.query(
       `UPDATE cases SET
-        etracking=?, letter_no=?, letter_date=?, post_no=?, post_date=?, title=?,
-        source_id=?, product=?, product_license=?, bounty_amount=?, bounty_requested=?, bounty_first_name=?, bounty_last_name=?, bounty_no=?, description=?,
+        etracking=?, letter_no=?, letter_date=?, doc_no=?, doc_date=?, post_no=?, post_date=?, title=?,
+        source_id=?, product=?, product_license=?, problem_other=?, bounty_amount=?, bounty_requested=?, bounty_first_name=?, bounty_last_name=?, bounty_no=?, description=?,
         complainant_name=?, complainant_phone=?, complainant_email=?, complainant_address=?, complainant_anonymous=?, complainant_channel_id=?,
         respondent_licensee=?, respondent_business=?, respondent_address=?, respondent_license_no=?, respondent_district_id=?, respondent_subdistrict_id=?
        WHERE id=?`,
       [
-        String(payload.etracking || "").trim() || null, payload.letterNo, payload.letterDate || null, payload.postNo, payload.postDate || null, payload.title,
+        String(payload.etracking || "").trim() || null, payload.letterNo || null, payload.letterDate || null,
+        String(payload.docNo || "").trim() || null, payload.docDate || null,
+        payload.postNo || null, payload.postDate || null, String(payload.title || "").trim(),
         sourceId, payload.product || null, payload.productLicense || null,
+        String(payload.problemOther || "").trim() || null,
         payload.bountyAmount || null,
         payload.bountyRequested ? 1 : 0, payload.bountyFirstName || null, payload.bountyLastName || null, payload.bountyNo || null,
         payload.description || null,
@@ -941,6 +993,14 @@ async function updateCase(id, payload, user) {
 
     // editing no longer resubmits — the creator resubmits explicitly via POST /cases/:id/submit
     await addTimeline(conn, id, { title: "แก้ไขข้อมูลเคส", user: user.name, kind: "create" });
+    // "มีการเปลี่ยนแปลง" — เจ้าหน้าที่ที่รับผิดชอบและหัวหน้าต้องรู้ว่าเคสถูกแก้ไข
+    // ยกเว้นคนที่กดแก้เอง (partialSave = บันทึกร่างระหว่างทาง ยังไม่ต้องกวนใคร)
+    if (!partialSave) {
+      const watchers = [...c.assignees, ...(await userIdsForRoles(conn, SUPERVISOR_ROLES))];
+      await notifyUsers(conn, watchers,
+        { icon: "info", title: `เคส ${caseRef(c)} มีการแก้ไขข้อมูลโดย ${user.name}`, caseId: id },
+        user.userId);
+    }
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
   return getCaseById(id);
@@ -976,18 +1036,26 @@ async function submitCase(id, user) {
   const c = await assertActionable(id, ["01"]);
   if (!c.isDraft && !c.returned) { const e = new Error("เคสนี้ถูกส่งขออนุมัติแล้ว"); e.status = 409; throw e; }
   if (c.createdByUserId !== user.userId) { const e = new Error("ส่งขออนุมัติได้เฉพาะผู้สร้างเคสเท่านั้น"); e.status = 403; throw e; }
+  // Drafts save incomplete, so completeness is enforced here — this is also reachable
+  // straight from the case detail page, which never goes through the form's validation.
+  // The stored case already has the same field names validateCreate expects.
+  const errors = validateCreate(c);
+  if (errors.length) {
+    const e = new Error(`กรอกข้อมูลไม่ครบ — ${errors[0]}`);
+    e.status = 400; e.errors = errors; throw e;
+  }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     if (c.isDraft) {
       await conn.query("UPDATE cases SET is_draft = 0 WHERE id = ?", [id]);
       await addTimeline(conn, id, { title: "ส่งขออนุมัติหัวหน้ากลุ่มงาน", user: user.name, kind: "create" });
-      await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "info", title: `เคสใหม่รออนุมัติ: ${c.title}`, caseId: id });
+      await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "info", title: `เคสใหม่รออนุมัติ: ${c.title}`, caseId: id }, user.userId);
     } else {
       // returned case fixed by its creator → back into the approval queue
       await conn.query("UPDATE cases SET returned = 0, return_reason = NULL WHERE id = ?", [id]);
       await addTimeline(conn, id, { title: "แก้ไขและส่งขออนุมัติอีกครั้ง", user: user.name, kind: "create" });
-      await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "info", title: `เคส ${caseRef(c)} แก้ไขแล้ว ส่งขออนุมัติอีกครั้ง`, caseId: id });
+      await notifyUsers(conn, await userIdsForRoles(conn, SUPERVISOR_ROLES), { icon: "info", title: `เคส ${caseRef(c)} แก้ไขแล้ว ส่งขออนุมัติอีกครั้ง`, caseId: id }, user.userId);
     }
     await conn.commit();
   } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }

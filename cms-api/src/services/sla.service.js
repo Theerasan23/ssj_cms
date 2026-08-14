@@ -46,7 +46,16 @@ function caseSlaSnapshot(c) {
   // already-completed stages, so a stage finished late-but-within-extension
   // doesn't keep the case locked forever
   const ext = Number(c.slaExtensionDays) || 0;
-  const stageAssign = computeSlaStage(c.postDate, SLA_DAYS.assign + ext, c.assignedAt, t);
+  // POST no./date are optional. With no post_date there is nothing to anchor the
+  // ขั้นมอบหมาย window to, so computeSlaStage already reports "pending". The window also
+  // stays unjudged once the case has moved past that stage without one — either assigned
+  // while post_date was empty (assignSlaWaived), or already past 01 with no assigned_at at
+  // all (imported mid-workflow). Entering a POST date later must not retroactively judge
+  // — or lock — a stage that was already skipped.
+  const assignUnmeasurable = c.assignSlaWaived || (!c.assignedAt && c.status !== "01");
+  const stageAssign = assignUnmeasurable
+    ? { kind: "pending", label: "—" }
+    : computeSlaStage(c.postDate, SLA_DAYS.assign + ext, c.assignedAt, t);
   const investTarget = c.investigation && (c.investigation.siteVisitDate || c.investigation.meetingDate)
     ? minDate(c.investigation.siteVisitDate, c.investigation.meetingDate) : null;
   const stageInvest = computeSlaStage(c.assignedAt, SLA_DAYS.invest + ext, investTarget, t);

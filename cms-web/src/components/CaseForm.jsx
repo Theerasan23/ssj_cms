@@ -2,15 +2,21 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { DateInput } from "@/components/DateInput";
 import { FormField, ChipPicker, FileUpload } from "@/components/ui";
 import { useApp, useToasts } from "@/context/AppContext";
 
+// The master row is named "อื่น ๆ" (with a space); compare ignoring spaces so a differently
+// spelled variant still counts. Keep in sync with cms-api cases.service.js.
+const isOtherProblem = (name) => String(name || "").replace(/\s/g, "") === "อื่นๆ";
+
 export function blankCaseForm(todayIso) {
   return {
-    etracking: "", letterNo: "", letterDate: todayIso, postNo: "", postDate: todayIso,
+    // postDate ตั้งต้นว่าง — ถ้า pre-fill เป็นวันนี้ เคสที่ยังไม่มีเลข POST จะเริ่มนับ SLA ทันที
+    etracking: "", letterNo: "", letterDate: todayIso, docNo: "", docDate: "", postNo: "", postDate: "",
     complainant: { name: "", phone: "", email: "", address: "", channel: "", anonymous: false },
     respondent: { licensee: "", business: "", address: "", district: "", subdistrict: "", licenseNo: "" },
-    title: "", laws: [], source: "", product: "", productLicense: "", problems: [],
+    title: "", laws: [], source: "", product: "", productLicense: "", problems: [], problemOther: "",
     bountyAmount: "", bountyRequested: false, bountyFirstName: "", bountyLastName: "", bountyNo: "",
     description: "", attachments: [],
   };
@@ -19,10 +25,12 @@ export function blankCaseForm(todayIso) {
 // Maps an API case object into form values (for editing).
 export function caseToForm(c) {
   return {
-    etracking: c.etracking || "", letterNo: c.letterNo || "", letterDate: c.letterDate || "", postNo: c.postNo || "", postDate: c.postDate || "",
+    etracking: c.etracking || "", letterNo: c.letterNo || "", letterDate: c.letterDate || "",
+    docNo: c.docNo || "", docDate: c.docDate || "", postNo: c.postNo || "", postDate: c.postDate || "",
     complainant: { name: c.complainant.name || "", phone: c.complainant.phone || "", email: c.complainant.email || "", address: c.complainant.address || "", channel: c.complainant.channel || "", anonymous: !!c.complainant.anonymous },
     respondent: { licensee: c.respondent.licensee || "", business: c.respondent.business || "", address: c.respondent.address || "", district: c.respondent.district || "", subdistrict: c.respondent.subdistrict || "", licenseNo: c.respondent.licenseNo || "" },
-    title: c.title || "", laws: c.laws || [], source: c.source || "", product: c.product || "", productLicense: c.productLicense || "", problems: c.problems || [],
+    title: c.title || "", laws: c.laws || [], source: c.source || "", product: c.product || "", productLicense: c.productLicense || "",
+    problems: c.problems || [], problemOther: c.problemOther || "",
     // attachments are managed on the case detail page (view/download/delete); the form's
     // upload zone is only for adding NEW files, so start it empty when editing.
     bountyAmount: c.bountyAmount != null ? String(c.bountyAmount) : "",
@@ -54,13 +62,15 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
 
   function validate() {
     const e = {}, w = {};
-    if (!form.letterNo) e.letterNo = "กรุณากรอกเลขรับหนังสือ";
-    if (!form.letterDate) e.letterDate = "กรุณาเลือกวันที่หนังสือ";
-    if (!form.postNo) e.postNo = "กรุณากรอกเลขรับ POST";
-    if (!form.postDate) e.postDate = "กรุณาเลือกวันลงรับ POST (สำคัญสำหรับ SLA)";
-    if (form.letterDate && form.postDate && form.letterDate > form.postDate) w.letterDate = "วันที่หนังสือมาหลังวันที่ POST — ตรวจสอบให้แน่ใจ";
+    if (!form.letterNo) e.letterNo = "กรุณากรอกเลขที่ลงรับ สสจ.";
+    if (!form.letterDate) e.letterDate = "กรุณาเลือกวันที่ลงรับ สสจ.";
+    // เลขรับ POST / วันลงรับ POST ไม่บังคับ — ถ้าเว้นว่าง SLA ขั้นมอบหมายจะยังไม่เริ่มนับ
+    if (form.letterDate && form.postDate && form.letterDate > form.postDate) w.letterDate = "วันที่ลงรับ สสจ. มาหลังวันลงรับ POST — ตรวจสอบให้แน่ใจ";
     if (form.letterDate && form.letterDate > todayIso) e.letterDate = "วันที่ไม่สามารถเป็นอนาคต";
     if (form.postDate && form.postDate > todayIso) e.postDate = "วันที่ไม่สามารถเป็นอนาคต";
+    // เลขที่หนังสือ/ลงวันที่ ไม่บังคับ — ตรวจเฉพาะเมื่อกรอกมา
+    if (form.docDate && form.docDate > todayIso) e.docDate = "วันที่ไม่สามารถเป็นอนาคต";
+    if (form.docDate && form.letterDate && form.docDate > form.letterDate) w.docDate = "หนังสือลงวันที่หลังวันที่ สสจ. ลงรับ — ตรวจสอบให้แน่ใจ";
     if (!form.complainant.channel) e.channel = "กรุณาเลือกช่องทางการร้องเรียน";
     if (!form.respondent.licensee && !form.respondent.business) e.respondent = "กรอกอย่างน้อย 1 ใน: ชื่อผู้รับอนุญาต / ชื่อสถานประกอบการ";
     if (!form.title || form.title.length < 5) e.title = "ชื่อกรณีต้องมี 5–200 ตัวอักษร";
@@ -68,6 +78,7 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
     if (form.laws.length === 0) e.laws = "เลือกพรบ. อย่างน้อย 1 หมวด";
     if (!form.source) e.source = "เลือกที่มาของผู้ร้อง";
     if (form.problems.length === 0) e.problems = "เลือกประเภทปัญหาอย่างน้อย 1 ข้อ";
+    else if (form.problems.some(isOtherProblem) && !form.problemOther.trim()) e.problemOther = "กรุณาระบุว่าปัญหาอื่น ๆ คืออะไร";
     if (form.bountyRequested) {
       if (!form.bountyFirstName.trim()) e.bountyFirstName = "กรุณากรอกชื่อ";
       if (!form.bountyLastName.trim()) e.bountyLastName = "กรุณากรอกนามสกุล";
@@ -77,8 +88,10 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
     return Object.keys(e).length === 0;
   }
 
-  async function submit(handler = onSubmit) {
-    if (!validate()) {
+  // requireComplete=false = "บันทึกร่าง"/"บันทึกการแก้ไข (ยังไม่ส่ง)" — เก็บงานค้างไว้ได้
+  // แม้ยังกรอกช่อง * ไม่ครบ ความครบถ้วนถูกบังคับตอนกดส่งขออนุมัติแทน
+  async function submit(handler = onSubmit, { requireComplete = true } = {}) {
+    if (requireComplete && !validate()) {
       toast.push({ kind: "error", title: "กรอกข้อมูลไม่ครบ", msg: "กรุณาตรวจสอบฟิลด์ที่มีเครื่องหมาย *" });
       setTimeout(() => {
         const el = document.querySelector(".input.error, .select.error, .field-error");
@@ -86,12 +99,16 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
       }, 50);
       return;
     }
+    if (!requireComplete) { setErrors({}); setWarnings({}); }
     setSaving(true);
     try {
       await handler({
         etracking: form.etracking, letterNo: form.letterNo, letterDate: form.letterDate,
+        docNo: form.docNo, docDate: form.docDate || null,
         postNo: form.postNo, postDate: form.postDate, title: form.title,
         laws: form.laws, problems: form.problems, source: form.source,
+        // เก็บข้อความเฉพาะตอนที่ยังเลือก "อื่น ๆ" อยู่ — ถ้าผู้ใช้เอาชิปออก ข้อความค้างต้องไม่ถูกบันทึก
+        problemOther: form.problems.some(isOtherProblem) ? form.problemOther.trim() : "",
         complainant: { ...form.complainant }, respondent: { ...form.respondent },
         product: form.product, productLicense: form.productLicense,
         bountyAmount: form.bountyAmount || null,
@@ -134,18 +151,18 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
                 <input className={`input mono ${errors.etracking ? "error" : ""}`} placeholder="เช่น ECP-2569-00123" value={form.etracking} onChange={(e) => update("etracking", e.target.value)} />
               </FormField>
               <div></div>
-              <FormField label="เลขรับหนังสือ" req error={errors.letterNo}>
+              <FormField label="เลขที่ลงรับ สสจ." req error={errors.letterNo}>
                 <input className={`input mono ${errors.letterNo ? "error" : ""}`} placeholder="เช่น นบ 0032.2/345" value={form.letterNo} onChange={(e) => update("letterNo", e.target.value)} />
               </FormField>
-              <FormField label="วันที่ของหนังสือ" req error={errors.letterDate} warning={warnings.letterDate}>
-                <input type="date" className={`input ${errors.letterDate ? "error" : ""}`} value={form.letterDate} onChange={(e) => update("letterDate", e.target.value)} />
+              <FormField label="วันที่ลงรับ สสจ." req error={errors.letterDate} warning={warnings.letterDate}>
+                <DateInput className={errors.letterDate ? "error" : ""} value={form.letterDate} onChange={(v) => update("letterDate", v)} />
               </FormField>
-              <FormField label="เลขรับ POST" req error={errors.postNo}>
+              <FormField label="เลขรับ POST" error={errors.postNo} hint="ไม่บังคับ — ใส่ภายหลังได้">
                 <input className={`input mono ${errors.postNo ? "error" : ""}`} placeholder="เช่น POST-2569-0421" value={form.postNo} onChange={(e) => update("postNo", e.target.value)} />
               </FormField>
-              <FormField label="วันที่ลงรับ POST" req error={errors.postDate}>
-                <input type="date" className={`input ${errors.postDate ? "error" : ""}`} value={form.postDate} onChange={(e) => update("postDate", e.target.value)} />
-                <span className="hint">เป็นจุดเริ่มต้นการนับ SLA</span>
+              <FormField label="วันที่ลงรับ POST" error={errors.postDate}>
+                <DateInput className={errors.postDate ? "error" : ""} value={form.postDate} onChange={(v) => update("postDate", v)} />
+                <span className="hint">เป็นจุดเริ่มต้นการนับ SLA — เว้นว่างได้ SLA ขั้นมอบหมายจะยังไม่เริ่มนับจนกว่าจะใส่</span>
               </FormField>
             </div>
           </div>
@@ -170,6 +187,12 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
                   <option value="">-- เลือก --</option>
                   {cms.MASTER.channels.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
+              </FormField>
+              <FormField label="เลขที่หนังสือ" hint="เลขที่ของหนังสือต้นทาง — ไม่บังคับ">
+                <input className="input mono" placeholder="เช่น นบ 0032.2/345" value={form.docNo} onChange={(e) => update("docNo", e.target.value)} />
+              </FormField>
+              <FormField label="ลงวันที่" error={errors.docDate} warning={warnings.docDate} hint="วันที่ระบุบนหนังสือต้นทาง — ไม่บังคับ">
+                <DateInput className={errors.docDate ? "error" : ""} value={form.docDate} onChange={(v) => update("docDate", v)} />
               </FormField>
               <FormField label="เบอร์โทร">
                 <input className="input" placeholder="081-234-5678" value={form.complainant.phone} onChange={(e) => update("complainant.phone", e.target.value)} />
@@ -244,6 +267,13 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
             <FormField label="ประเภทปัญหา" req error={errors.problems}>
               <ChipPicker options={cms.MASTER.problems.map((p) => ({ id: p, label: p }))} value={form.problems} onChange={(v) => update("problems", v)} />
             </FormField>
+            {form.problems.some(isOtherProblem) && (
+              <FormField label='ระบุปัญหา "อื่น ๆ"' req error={errors.problemOther}>
+                <input className={`input ${errors.problemOther ? "error" : ""}`} maxLength={191}
+                  placeholder="ระบุประเภทปัญหาที่ไม่มีในตัวเลือก"
+                  value={form.problemOther} onChange={(e) => update("problemOther", e.target.value)} />
+              </FormField>
+            )}
             <div className="form-grid cols-2">
               <FormField label="สินบนนำจับ">
                 <input className="input" placeholder="เช่น 5,000 บาท / ตามประกาศฯ" value={form.bountyAmount} onChange={(e) => update("bountyAmount", e.target.value)} />
@@ -294,7 +324,7 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
         <div className="row end" style={{ gap: 10 }}>
           <button className="btn btn-ghost" onClick={onCancel}>ยกเลิก</button>
           {secondary && (
-            <button className="btn btn-outline btn-lg" disabled={saving} onClick={() => submit(secondary.onSubmit)}>
+            <button className="btn btn-outline btn-lg" disabled={saving} onClick={() => submit(secondary.onSubmit, { requireComplete: false })}>
               <Icon name={secondary.icon || "edit"} size={16} /> {secondary.label}
             </button>
           )}

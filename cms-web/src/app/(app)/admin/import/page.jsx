@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
+import { DateInput } from "@/components/DateInput";
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
 import { Modal, Tabs, ChipPicker, FormField } from "@/components/ui";
@@ -27,8 +28,8 @@ const COLUMNS = [
   { key: "respondent_business", label: "ผู้ถูกร้อง: สถานประกอบการ" },
   { key: "respondent_licensee", label: "ผู้ถูกร้อง: ผู้รับอนุญาต" },
   { key: "district", label: "อำเภอ" },
-  { key: "letterNo", label: "เลขรับหนังสือ" },
-  { key: "letterDate", label: "วันที่หนังสือ (ค.ศ. YYYY-MM-DD)" },
+  { key: "letterNo", label: "เลขที่ลงรับ สสจ." },
+  { key: "letterDate", label: "วันที่ลงรับ สสจ. (ค.ศ. YYYY-MM-DD)" },
   { key: "postNo", label: "เลขรับ POST" },
   { key: "postDate", label: "วันลงรับ POST (ค.ศ. YYYY-MM-DD)" },
   { key: "product", label: "ผลิตภัณฑ์" },
@@ -537,7 +538,7 @@ function EditRowModal({ row, ctx, master, cms, onClose, onDelete, onSave }) {
     const validIso = /^\d{4}-\d{2}-\d{2}$/.test(val);
     return (
       <FormField label={FIELD_LABEL[key]} warning={warn(key)}>
-        <input type="date" className={`input ${warn(key) ? "error" : ""}`} value={validIso ? val : ""} onChange={set(key)} />
+        <DateInput className={warn(key) ? "error" : ""} value={validIso ? val : ""} onChange={set(key)} />
       </FormField>
     );
   };
@@ -605,7 +606,7 @@ function EditRowModal({ row, ctx, master, cms, onClose, onDelete, onSave }) {
         <FormField label="ผู้ถูกร้อง: ผู้รับอนุญาต">
           <input className="input" value={d.respondent_licensee || ""} onChange={set("respondent_licensee")} />
         </FormField>
-        <FormField label="เลขรับหนังสือ">
+        <FormField label="เลขที่ลงรับ สสจ.">
           <input className="input" value={d.letterNo || ""} onChange={set("letterNo")} />
         </FormField>
         {dateField("letterDate")}

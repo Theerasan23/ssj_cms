@@ -7,7 +7,7 @@ import { StatusBadge, SLABadge, ChipPicker } from "@/components/ui";
 import { ExportButtons } from "@/components/ExportButtons";
 import { useApp } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
-import { SUPERVISOR_ROLES } from "@/lib/roles";
+import { SUPERVISOR_ROLES, seesOwnCasesOnly } from "@/lib/roles";
 
 export default function CaseListPage() {
   return (
@@ -27,6 +27,7 @@ function CaseList() {
   const [statusFilter, setStatusFilter] = useState([]);
   const [lawFilter, setLawFilter] = useState([]);
   const [slaFilter, setSlaFilter] = useState("");
+  const ownCasesOnly = seesOwnCasesOnly(role.id);
   const [scope, setScope] = useState(searchParams.get("scope") === "mine" ? "mine" : "all");
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(1);
@@ -40,7 +41,7 @@ function CaseList() {
     }
     if (query) {
       const q = query.toLowerCase();
-      const hay = [c.etracking, c.title, c.respondent.business, c.respondent.licensee].join(" ").toLowerCase();
+      const hay = [c.etracking, c.letterNo, c.title, c.respondent.business, c.respondent.licensee].join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
     if (statusFilter.length && !statusFilter.includes(c.status)) return false;
@@ -72,12 +73,16 @@ function CaseList() {
         </div>
         <div className="page-actions">
           <div className="row" style={{ gap: 8 }}>
-            <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, padding: 2, background: "var(--surface)" }}>
-              <button className={`btn btn-sm ${scope === "all" ? "btn-primary" : "btn-ghost"}`} onClick={() => setScope("all")}>เคสทั้งหมด</button>
-              <button className={`btn btn-sm ${scope === "mine" ? "btn-primary" : "btn-ghost"}`} onClick={() => setScope("mine")}>เคสของฉัน</button>
-            </div>
+            {/* เจ้าหน้าที่ดำเนินการได้รับเฉพาะเคสของตัวเองจาก API อยู่แล้ว ตัวเลือกนี้จึงไม่มีความหมาย */}
+            {!ownCasesOnly && (
+              <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, padding: 2, background: "var(--surface)" }}>
+                <button className={`btn btn-sm ${scope === "all" ? "btn-primary" : "btn-ghost"}`} onClick={() => setScope("all")}>เคสทั้งหมด</button>
+                <button className={`btn btn-sm ${scope === "mine" ? "btn-primary" : "btn-ghost"}`} onClick={() => setScope("mine")}>เคสของฉัน</button>
+              </div>
+            )}
             <ExportButtons rows={() => filtered} columns={[
               { header: "E-tracking", value: (c) => c.etracking || "" },
+              { header: "เลขรับ สสจ.", value: (c) => c.letterNo || "" },
               { header: "ชื่อเคส", value: (c) => c.title },
               { header: "ผู้ถูกร้อง", value: (c) => c.respondent.business || c.respondent.licensee || "" },
               { header: "อำเภอ", value: (c) => c.respondent.district || "" },
@@ -99,7 +104,7 @@ function CaseList() {
           <div className="row" style={{ gap: 10 }}>
             <div style={{ flex: 1, position: "relative", minWidth: 220 }}>
               <Icon name="search" size={16} style={{ position: "absolute", left: 12, top: 12, color: "var(--text-soft)" }} />
-              <input className="input" placeholder="ค้นหา E-tracking, ชื่อเคส, ผู้ถูกร้อง..." value={query} onChange={(e) => setQuery(e.target.value)} style={{ paddingLeft: 36 }} />
+              <input className="input" placeholder="ค้นหา E-tracking, เลขรับ สสจ., ชื่อเคส, ผู้ถูกร้อง..." value={query} onChange={(e) => setQuery(e.target.value)} style={{ paddingLeft: 36 }} />
             </div>
             <button className="btn btn-outline" onClick={() => setShowFilters((v) => !v)}>
               <Icon name="filter" size={16} /> ตัวกรอง
@@ -141,7 +146,7 @@ function CaseList() {
           <>
             <div className="table-wrap">
               <table className="data">
-                <thead><tr><th>E-tracking</th><th>ชื่อเคส</th><th>ผู้ถูกร้อง · อำเภอ</th><th>พรบ.</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>SLA</th><th>ลงรับ</th><th></th></tr></thead>
+                <thead><tr><th>E-tracking</th><th>เลขรับ สสจ.</th><th>ชื่อเคส</th><th>ผู้ถูกร้อง · อำเภอ</th><th>พรบ.</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>SLA</th><th>ลงรับ</th><th></th></tr></thead>
                 <tbody>
                   {pageItems.map((c) => {
                     const locked = cms.isCaseLocked(c);
@@ -155,13 +160,16 @@ function CaseList() {
                             {c.etracking || <span className="muted">—</span>}
                           </div>
                         </td>
-                        <td style={{ fontWeight: 500, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</td>
+                        <td className="num">{c.letterNo || <span className="muted">—</span>}</td>
+                        <td style={{ fontWeight: 500, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {c.title || <span className="muted">(ร่าง — ยังไม่ตั้งชื่อเรื่อง)</span>}
+                        </td>
                         <td>
                           <div style={{ fontWeight: 500 }}>{c.respondent.business || c.respondent.licensee || "—"}</div>
                           <div className="small muted">{c.respondent.district}</div>
                         </td>
                         <td><div className="tag-list">{c.laws.slice(0, 2).map((id) => <span key={id} className="chip">{cms.lawLabel(id)}</span>)}{c.laws.length > 2 && <span className="chip">+{c.laws.length - 2}</span>}</div></td>
-                        <td>{c.assignees.length === 0 ? <span className="muted small">— ยังไม่มอบหมาย</span> : c.assignees.map((id) => cms.officerName(id).trim().split(/\s+/)[0]).join(", ")}</td>
+                        <td>{c.assignees.length === 0 ? <span className="muted small">— ยังไม่มอบหมาย</span> : c.assignees.map((id) => cms.officerName(id)).join(", ")}</td>
                         <td><StatusBadge code={c.status} /></td>
                         <td><SLABadge sla={cms.caseSla(c)} /></td>
                         <td className="muted small">{cms.fmtThaiDateShort(c.postDate)}</td>

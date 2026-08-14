@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { StatusBadge, SLABadge, AvatarStack, Tabs, Modal, FormField } from "@/components/ui";
+import { StatusBadge, SLABadge, Tabs, Modal, FormField } from "@/components/ui";
 import { AssignModal, ExtendSlaModal } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
@@ -234,7 +234,7 @@ export default function ApprovalsPage() {
                     <tr key={c.id} onClick={() => router.push(`/cases/${c.id}`)}>
                       <td className="num">{c.etracking || "—"}</td>
                       <td style={{ fontWeight: 500, maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</td>
-                      <td>{c.assignees.length === 0 ? <span className="muted small">—</span> : <AvatarStack names={c.assignees.map((id) => cms.officerName(id))} max={3} size="sm" />}</td>
+                      <td>{c.assignees.length === 0 ? <span className="muted small">—</span> : c.assignees.map((id) => cms.officerName(id)).join(", ")}</td>
                       <td className="muted small">{cms.fmtThaiDate(c.assignedAt)}</td>
                       <td><StatusBadge code={c.status} /></td>
                       <td>

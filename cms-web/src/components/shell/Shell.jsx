@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon";
 import { Logo, useClickOutside } from "@/components/ui";
 import { useApp } from "@/context/AppContext";
 import { api } from "@/lib/api";
+import { fmtSince } from "@/lib/format";
 import { SUPERVISOR_ROLES } from "@/lib/roles";
 
 // roles: supply(ธุรการ) สร้างเคส · head/deputy อนุมัติ+มอบหมาย · officer ดำเนินการ · fine เฉพาะขั้นค่าปรับ
@@ -81,7 +82,7 @@ function Sidebar({ items, pathname, mobileNavOpen, setMobileNavOpen }) {
         <div className="sidebar-brand"><Logo /></div>
         <div className="sidebar-search">
           <Icon name="search" size={16} className="ss-icon" />
-          <input placeholder="ค้นหา E-tracking, ชื่อเคส…"
+          <input placeholder="ค้นหา E-tracking, เลขรับ สสจ., ชื่อเคส…"
             onKeyDown={(e) => { if (e.key === "Enter") go(`/cases?q=${encodeURIComponent(e.target.value)}`); }} />
         </div>
         <nav className="sidebar-nav">
@@ -138,7 +139,7 @@ function HeaderControls() {
     <div className="row" style={{ gap: 10 }}>
       <div className="quick-search">
         <Icon name="search" className="search-icon" size={16} />
-        <input placeholder="ค้นหา E-tracking, ชื่อเคส, ผู้ถูกร้อง..."
+        <input placeholder="ค้นหา E-tracking, เลขรับ สสจ., ชื่อเคส, ผู้ถูกร้อง..."
           onKeyDown={(e) => { if (e.key === "Enter") { router.push(`/cases?q=${encodeURIComponent(e.target.value)}`); e.target.blur(); } }} />
         <kbd>⌘ K</kbd>
       </div>
@@ -154,7 +155,12 @@ function HeaderControls() {
               <button className="btn btn-ghost btn-sm" onClick={() => actions.markAllRead()}>ทำเครื่องหมายว่าอ่านแล้ว</button>
             </div>
             {notifications.map((n) => (
-              <div key={n.id} className={`notif-item ${n.unread ? "unread" : ""}`} onClick={() => { setOpenBell(false); if (n.caseId) router.push(`/cases/${n.caseId}`); }}>
+              <div key={n.id} className={`notif-item ${n.unread ? "unread" : ""}`}
+                onClick={() => {
+                  setOpenBell(false);
+                  if (n.unread) actions.markRead(n.id);
+                  if (n.caseId) router.push(`/cases/${n.caseId}`);
+                }}>
                 <div className="notif-ic" style={{
                   background: n.icon === "warn" ? "var(--warning-100)" : n.icon === "danger" ? "var(--error-100)" : n.icon === "success" ? "var(--success-100)" : "var(--primary-100)",
                   color: n.icon === "warn" ? "var(--warning-700)" : n.icon === "danger" ? "var(--error-700)" : n.icon === "success" ? "var(--success-700)" : "var(--primary-700)",
@@ -163,7 +169,7 @@ function HeaderControls() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="notif-title">{n.title}</div>
-                  <div className="notif-meta">{n.time}</div>
+                  <div className="notif-meta">{fmtSince(n.createdAt) || n.time || ""}</div>
                 </div>
               </div>
             ))}

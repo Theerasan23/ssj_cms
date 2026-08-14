@@ -5,6 +5,7 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS notifications;
+DROP TABLE IF EXISTS case_followups;
 DROP TABLE IF EXISTS case_decisions;
 DROP TABLE IF EXISTS case_investigations;
 DROP TABLE IF EXISTS case_timeline;
@@ -28,6 +29,7 @@ DROP TABLE IF EXISTS sources;
 DROP TABLE IF EXISTS problems;
 DROP TABLE IF EXISTS committees;
 DROP TABLE IF EXISTS resolutions;
+DROP TABLE IF EXISTS subdistricts;
 DROP TABLE IF EXISTS districts;
 DROP TABLE IF EXISTS statuses;
 DROP TABLE IF EXISTS sla_config;
@@ -149,14 +151,21 @@ CREATE TABLE users (
 CREATE TABLE cases (
   id                   VARCHAR(32) PRIMARY KEY,
   etracking            VARCHAR(64) UNIQUE,
+  -- letter_* = เลขที่/วันที่ลงรับ ของ สสจ. (when this office logged the document)
   letter_no            VARCHAR(64),
   letter_date          DATE,
+  -- doc_* = เลขที่/วันที่ ของตัวหนังสือต้นทางเอง — optional, shown under ข้อมูลผู้ร้องเรียน
+  doc_no               VARCHAR(64),
+  doc_date             DATE,
   post_no              VARCHAR(64),
   post_date            DATE,
   title                VARCHAR(255) NOT NULL,
   source_id            INT,
   product              VARCHAR(191),
   product_license      VARCHAR(128),
+  -- free text describing the "อื่น ๆ" problem type; the selected types themselves
+  -- live in case_problems. Only meaningful when "อื่น ๆ" is among them.
+  problem_other        VARCHAR(191),
   bounty_amount        VARCHAR(191),
   bounty_requested     TINYINT(1) NOT NULL DEFAULT 0,
   bounty_first_name    VARCHAR(128),
@@ -208,6 +217,9 @@ CREATE TABLE cases (
   created_at           DATE,
   assigned_at          DATE,
   assigned_by          VARCHAR(16),
+  -- set at assign time when post_date was still empty: the ขั้นมอบหมาย window has no
+  -- anchor to measure against, so it stays unjudged even if a POST date is filled in later
+  assign_sla_waived    TINYINT(1) NOT NULL DEFAULT 0,
 
   INDEX idx_cases_status (status_code),
   INDEX idx_cases_post_date (post_date),
@@ -385,11 +397,12 @@ CREATE TABLE notifications (
   id                VARCHAR(24) PRIMARY KEY,
   icon              VARCHAR(16),
   title             VARCHAR(255) NOT NULL,
-  time_text         VARCHAR(64),
+  time_text         VARCHAR(64),              -- legacy frozen label; created_at is the source of truth
   unread            TINYINT(1) NOT NULL DEFAULT 1,
   case_id           VARCHAR(32),
-  recipient_user_id INT,                    -- target user; NULL = broadcast (legacy/seed only)
+  recipient_user_id INT NOT NULL,            -- notifications are always per-person
   ord               INT NOT NULL DEFAULT 0,
+  created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_notif_recipient (recipient_user_id),
   CONSTRAINT fk_notif_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE SET NULL,
   CONSTRAINT fk_notif_user FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE CASCADE

@@ -145,7 +145,7 @@ export default function ReportsPage() {
         <div className="card-header"><h3>เคสตามสถานะ + กลุ่มเจ้าหน้าที่</h3></div>
         <div className="card-body">
           <div className="stack">
-            {cms.MASTER.officers.slice(0, 5).map((o) => {
+            {cms.MASTER.officers.map((o) => {
               const myCases = cases.filter((c) => c.assignees.includes(o.id));
               const segs = ["02", "03", "04", "05"].map((code) => ({ code, count: myCases.filter((c) => c.status === code).length }));
               return (

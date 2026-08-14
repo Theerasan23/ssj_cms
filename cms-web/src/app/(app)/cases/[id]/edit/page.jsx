@@ -24,8 +24,10 @@ export default function CaseEditPage() {
     return () => { alive = false; };
   }, [id]);
 
-  async function saveChanges(payload) {
-    await api.patch(`/cases/${id}`, payload);
+  // draft=true tells the API this is a work-in-progress save, so the ช่อง * ที่ยังไม่ได้กรอก
+  // are not rejected — the full check runs when the creator submits for approval instead.
+  async function saveChanges(payload, { draft = false } = {}) {
+    await api.patch(`/cases/${id}`, { ...payload, draft });
     const files = (payload.attachments || []).map((a) => a._file).filter(Boolean);
     if (files.length) {
       const fd = new FormData();
@@ -56,7 +58,7 @@ export default function CaseEditPage() {
 
   // draft/returned: secondary action = save without submitting
   async function onSaveDraft(payload) {
-    await saveChanges(payload);
+    await saveChanges(payload, { draft: true });
     toast.push({
       kind: "success",
       title: caseObj?.returned ? "บันทึกการแก้ไขแล้ว" : "บันทึกร่างแล้ว",

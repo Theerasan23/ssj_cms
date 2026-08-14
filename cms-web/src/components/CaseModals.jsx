@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { DateInput } from "@/components/DateInput";
 import { Modal, ChipPicker, FormField, FileUpload, SLABadge } from "@/components/ui";
 import { useApp } from "@/context/AppContext";
 
@@ -174,7 +175,7 @@ export function InvestigationModal({ c, onClose, onAddEvent, onChoose }) {
             </FormField>
             <div className="form-grid cols-2">
               <FormField label="วันที่" req>
-                <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+                <DateInput value={date} onChange={setDate} />
               </FormField>
               <FormField label={kind === "site" ? "สถานที่ลงพื้นที่" : "สถานที่นัด"}>
                 <input className="input" placeholder={kind === "site" ? "ระบุสถานที่" : "เช่น สสจ.นนทบุรี"} value={place} onChange={(e) => setPlace(e.target.value)} />
@@ -253,7 +254,7 @@ export function FollowupModal({ c, onClose, onAdd, onCloseCase, onChoose }) {
           <div className="section-body stack">
             <div className="form-grid cols-2">
               <FormField label="วันที่">
-                <input type="date" className="input" value={date} onChange={(e) => setDate(e.target.value)} />
+                <DateInput value={date} onChange={setDate} />
               </FormField>
               <FormField label={ui.dest}>
                 <input className="input" placeholder={ui.ph} value={destination} onChange={(e) => setDestination(e.target.value)} />
@@ -476,7 +477,7 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply, onChoose }) {
                 <input type="number" className="input" value={year} onChange={(e) => setYear(e.target.value)} />
               </FormField>
               <FormField label="วันที่ประชุม" req={!!resolution} hint={!resolution ? "เว้นว่างได้หากยังไม่ประชุม" : undefined}>
-                <input type="date" className="input" value={meetingDate} onChange={(e) => setMeetingDate(e.target.value)} />
+                <DateInput value={meetingDate} onChange={setMeetingDate} />
               </FormField>
             </div>
             <FormField label="มติ" hint="ยังไม่เลือกมติ = บันทึกเป็นการเสนอเข้าที่ประชุม (อยู่ระหว่างรอเข้าคณะกรรมการ · SLA นับต่อ)">
@@ -644,7 +645,7 @@ export function FineModal({ c, onClose, onSave, onCloseCase, onChoose }) {
           <>
             <div className="form-grid cols-2">
               <FormField label="วันที่จ่ายค่าปรับ" req>
-                <input type="date" className="input" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} />
+                <DateInput value={paidDate} onChange={setPaidDate} />
               </FormField>
               <FormField label="จำนวนที่ชำระ (บาท)" req hint={`ชำระบางส่วนได้ · สูงสุด ${cms.fmtMoney(selRemaining)}`}>
                 <input type="number" min="1" max={selRemaining} className="input mono" value={amount} onChange={(e) => setAmount(e.target.value)} />

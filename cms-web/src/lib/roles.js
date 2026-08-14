@@ -8,3 +8,8 @@ export const SUPERVISOR_ROLES = [...HEAD_ROLES, "admin"];
 
 export const isHeadLevel = (roleId) => HEAD_ROLES.includes(roleId);
 export const isSupervisor = (roleId) => SUPERVISOR_ROLES.includes(roleId);
+
+// เจ้าหน้าที่ดำเนินการเห็นเฉพาะเคสของตัวเอง — API กรองให้แล้ว (auth/roles.js canSeeCase)
+// ที่นี่ใช้แค่ตัดสินใจว่า UI ควรซ่อนตัวเลือกที่ไม่มีความหมายสำหรับบทบาทนี้
+export const OWN_CASES_ONLY_ROLES = ["officer"];
+export const seesOwnCasesOnly = (roleId) => OWN_CASES_ONLY_ROLES.includes(roleId);

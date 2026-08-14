@@ -1,7 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const { requireAuth, requireRole } = require("../middleware/auth");
-const { SUPERVISOR_ROLES, isSupervisor } = require("../auth/roles");
+const { SUPERVISOR_ROLES, isSupervisor, canSeeCase } = require("../auth/roles");
 const cases = require("../services/cases.service");
 const attachments = require("../services/attachments.service");
 
@@ -66,6 +66,10 @@ router.get("/:id", async (req, res, next) => {
     if (!c) return res.status(404).json({ error: "ไม่พบเคส" });
     // drafts are private to their creator (admin may see them too)
     if (c.isDraft && c.createdByUserId !== req.user.userId && req.user.roleId !== "admin") {
+      return res.status(404).json({ error: "ไม่พบเคส" });
+    }
+    // เจ้าหน้าที่ดำเนินการเปิดดูเคสของคนอื่นด้วยการยิง URL ตรง ๆ ไม่ได้
+    if (!canSeeCase(c, { id: req.user.roleId, userId: req.user.userId })) {
       return res.status(404).json({ error: "ไม่พบเคส" });
     }
     res.json(c);

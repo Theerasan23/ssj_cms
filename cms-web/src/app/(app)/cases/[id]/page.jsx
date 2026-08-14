@@ -270,7 +270,7 @@ export default function CaseDetailPage() {
             {!closedCase && <SLABadge sla={sla} />}
           </div>
         </div>
-        <h2 style={{ margin: "8px 0 14px", fontSize: 19, lineHeight: 1.35, letterSpacing: "-0.01em" }}>{c.title}</h2>
+        <h2 style={{ margin: "8px 0 14px", fontSize: 19, lineHeight: 1.35, letterSpacing: "-0.01em" }}>{c.title || "(ร่าง — ยังไม่ตั้งชื่อเรื่อง)"}</h2>
         <div className="kv">
           <div className="k">ผู้ถูกร้อง</div><div className="v">{c.respondent.business || c.respondent.licensee || "—"}</div>
           <div className="k">อำเภอ</div><div className="v">{c.respondent.district || "—"}</div>
@@ -282,7 +282,7 @@ export default function CaseDetailPage() {
             </button>
           )}</div>
           <div className="k">วันลงรับ POST</div><div className="v">{cms.fmtThaiDate(c.postDate)}</div>
-          <div className="k">วันที่หนังสือ</div><div className="v">{cms.fmtThaiDate(c.letterDate)}</div>
+          <div className="k">วันที่ลงรับ สสจ.</div><div className="v">{cms.fmtThaiDate(c.letterDate)}</div>
           {c.slaExtensionDays > 0 && (<>
             <div className="k">ขยายกำหนด SLA</div>
             <div className="v"><span className="chip accent" style={{ fontWeight: 600 }}>+{c.slaExtensionDays} วัน</span></div>
@@ -345,9 +345,9 @@ export default function CaseDetailPage() {
       <DataCard title="เลขอ้างอิง" icon="paperclip">
         <div className="kv">
           <div className="k">E-tracking</div><div className="v mono">{c.etracking || "—"}</div>
-          <div className="k">เลขรับหนังสือ</div><div className="v mono">{c.letterNo}</div>
-          <div className="k">วันที่ของหนังสือ</div><div className="v">{cms.fmtThaiDate(c.letterDate)}</div>
-          <div className="k">เลขรับ POST</div><div className="v mono">{c.postNo}</div>
+          <div className="k">เลขที่ลงรับ สสจ.</div><div className="v mono">{c.letterNo}</div>
+          <div className="k">วันที่ลงรับ สสจ.</div><div className="v">{cms.fmtThaiDate(c.letterDate)}</div>
+          <div className="k">เลขรับ POST</div><div className="v mono">{c.postNo || "—"}</div>
           <div className="k">วันที่ลงรับ POST</div><div className="v">{cms.fmtThaiDate(c.postDate)}</div>
         </div>
       </DataCard>
@@ -362,8 +362,11 @@ export default function CaseDetailPage() {
             <div className="k">Email</div><div className="v">{c.complainant.email || "—"}</div>
           </div>
         )}
+        {/* หนังสือต้นทาง — ไม่ใช่ข้อมูลส่วนบุคคล จึงแสดงแม้ผู้ร้องเป็นนิรนาม */}
         <div className="kv" style={{ marginTop: 8 }}>
           <div className="k">ช่องทาง</div><div className="v"><span className="chip">{c.complainant.channel}</span></div>
+          <div className="k">เลขที่หนังสือ</div><div className="v mono">{c.docNo || "—"}</div>
+          <div className="k">ลงวันที่</div><div className="v">{c.docDate ? cms.fmtThaiDate(c.docDate) : "—"}</div>
         </div>
       </DataCard>
 
@@ -384,6 +387,9 @@ export default function CaseDetailPage() {
           <div className="k">ผลิตภัณฑ์/บริการ</div><div className="v">{c.product || "—"}</div>
           <div className="k">เลข อย./ทะเบียน</div><div className="v mono">{c.productLicense || "—"}</div>
           <div className="k">ประเภทปัญหา</div><div className="v"><div className="tag-list">{c.problems.map((p) => <span key={p} className="chip accent">{p}</span>)}</div></div>
+          {c.problemOther && (<>
+            <div className="k">ระบุ &quot;อื่น ๆ&quot;</div><div className="v">{c.problemOther}</div>
+          </>)}
           {c.bountyAmount && (<><div className="k">สินบนนำจับ</div><div className="v">{c.bountyAmount}</div></>)}
           {c.bountyRequested && (<>
             <div className="k">ผู้ประสงค์รับสินบน</div><div className="v">{[c.bountyFirstName, c.bountyLastName].filter(Boolean).join(" ") || "—"}</div>
@@ -602,7 +608,7 @@ export default function CaseDetailPage() {
       </div>
       <div className="page-header">
         <div>
-          <h1 style={{ maxWidth: 720 }}>{c.title}</h1>
+          <h1 style={{ maxWidth: 720 }}>{c.title || "(ร่าง — ยังไม่ตั้งชื่อเรื่อง)"}</h1>
           <div className="page-meta">สร้างโดย {c.createdByName} เมื่อ {cms.fmtThaiDate(c.createdAt)} · มอบหมาย {c.assignees.length} คน</div>
         </div>
         <div className="page-actions">

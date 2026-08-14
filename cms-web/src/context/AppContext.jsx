@@ -90,6 +90,12 @@ export function AppProvider({ children }) {
       setNotifications((prev) => prev.map((n) => ({ ...n, unread: false })));
       try { await api.post("/notifications/read-all", {}); } catch { /* ignore */ }
     },
+    // opening a notification is what marks it read — without this the unread badge
+    // only ever went down via "ทำเครื่องหมายว่าอ่านแล้ว", so it just kept climbing
+    async markRead(id) {
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, unread: false } : n)));
+      try { await api.post(`/notifications/${id}/read`, {}); } catch { /* ignore */ }
+    },
     reloadNotifications: loadNotifications,
     reloadMaster: loadMaster,
     async refreshUser() {

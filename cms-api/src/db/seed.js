@@ -39,6 +39,8 @@ const MASTER = {
     "การรักษา", "การแสดงฉลากไม่ถูกต้อง", "ไม่มีเลขสารบบ", "คุณภาพผลิตภัณฑ์และบริการ",
     "สถานที่ผลิตไม่ได้มาตรฐาน", "อาหารไม่บริสุทธิ์ (มีสารอันตราย)", "ให้ตรวจสอบการอนุญาต",
     "ผลิตภัณฑ์ปลอม/ผิดกฎหมาย", "ไม่ได้รับอนุญาต", "โภชนาการ (GDA)",
+    // must stay last — picking it reveals the free-text ระบุปัญหา "อื่น ๆ" field (cases.problem_other)
+    "อื่น ๆ",
   ],
   committees: [
     "คณะกรรมการพิจารณาคดี", "คณะกรรมการเปรียบเทียบคดี",
@@ -340,12 +342,15 @@ const SAMPLE_CASES = [
   },
 ];
 
+// `to` = username of the recipient. Notifications are per-person — a row without a
+// recipient would land in everyone's bell, which is exactly what we don't want.
+// `hoursAgo` drives created_at so the bell can show a real relative time.
 const NOTIFICATIONS = [
-  { id: "n1", icon: "warn",    title: "เคส ECP-2569-00124 เหลือ 2 วันก่อนครบ SLA เข้ากรรมการ", time: "วันนี้ 08:00", unread: true,  caseId: "case-002" },
-  { id: "n2", icon: "info",    title: "ได้รับมอบหมายเคสใหม่: คลินิกเสริมความงาม...",            time: "วันนี้ 09:14", unread: true,  caseId: "case-002" },
-  { id: "n3", icon: "success", title: "บันทึกมติคณะกรรมการเคส ECP-2569-00125 สำเร็จ",            time: "เมื่อวาน",     unread: false, caseId: "case-003" },
-  { id: "n4", icon: "danger",  title: "เคส ECP-2569-00126 ยังไม่มอบหมาย (เกินเวลา 1 วัน)",       time: "เมื่อวาน",     unread: true,  caseId: "case-004" },
-  { id: "n5", icon: "info",    title: "ค่าปรับเคส ECP-2569-00125 ค้างชำระ ครบ 30 วัน",          time: "3 วันก่อน",   unread: false, caseId: "case-003" },
+  { id: "n1", icon: "warn",    to: "pantep.p",    hoursAgo: 2,   title: "เคส ECP-2569-00124 เหลือ 2 วันก่อนครบ SLA เข้ากรรมการ", unread: true,  caseId: "case-002" },
+  { id: "n2", icon: "info",    to: "pantep.p",    hoursAgo: 5,   title: "ได้รับมอบหมายเคสใหม่: คลินิกเสริมความงาม...",            unread: true,  caseId: "case-002" },
+  { id: "n3", icon: "success", to: "arun.s",      hoursAgo: 28,  title: "บันทึกมติคณะกรรมการเคส ECP-2569-00125 สำเร็จ",            unread: false, caseId: "case-003" },
+  { id: "n4", icon: "danger",  to: "arun.s",      hoursAgo: 30,  title: "เคส ECP-2569-00126 ยังไม่มอบหมาย (เกินเวลา 1 วัน)",       unread: true,  caseId: "case-004" },
+  { id: "n5", icon: "info",    to: "manee.r",     hoursAgo: 72,  title: "ค่าปรับเคส ECP-2569-00125 ค้างชำระ ครบ 30 วัน",          unread: false, caseId: "case-003" },
 ];
 
 // ---------- insert logic ----------
@@ -513,8 +518,11 @@ async function main() {
     // notifications
     for (let i = 0; i < NOTIFICATIONS.length; i++) {
       const n = NOTIFICATIONS[i];
-      await conn.query("INSERT INTO notifications (id, icon, title, time_text, unread, case_id, ord) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [n.id, n.icon, n.title, n.time, n.unread ? 1 : 0, n.caseId, i]);
+      const recipient = userIdByUsername[n.to];
+      if (!recipient) continue; // no such user → skip rather than create an orphan row
+      await conn.query(
+        "INSERT INTO notifications (id, icon, title, unread, case_id, recipient_user_id, ord, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, NOW() - INTERVAL ? HOUR)",
+        [n.id, n.icon, n.title, n.unread ? 1 : 0, n.caseId, recipient, i, n.hoursAgo]);
     }
 
     await conn.commit();

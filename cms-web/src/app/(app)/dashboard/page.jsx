@@ -8,8 +8,18 @@ import { AssignModal } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
 import { api } from "@/lib/api";
-import { isHeadLevel, SUPERVISOR_ROLES } from "@/lib/roles";
+import { isHeadLevel, SUPERVISOR_ROLES, seesOwnCasesOnly } from "@/lib/roles";
 
+// SLA stages in workflow order. `short` is the chip label (the configured names are too
+// long for a KPI card); the full label + day count come from /master at render time.
+const SLA_STAGES = [
+  { stage: "assign", short: "มอบหมาย" },
+  { stage: "invest", short: "ตรวจสอบ" },
+  { stage: "board", short: "กรรมการ" },
+  { stage: "fine", short: "ค่าปรับ" },
+];
+// a case's live SLA stage is decided by its status (see sla.js caseSla)
+const STAGE_BY_STATUS = { "01": "assign", "02": "invest", "03": "board", "04": "fine" };
 
 export default function DashboardPage() {
   const { role } = useApp();
@@ -235,8 +245,18 @@ function OfficerDashboard({ cases }) {
 
   const totalCases = cases.length;
   const inProgress = cases.filter((c) => !c.closed).length;
-  const nearCases = cases.filter((c) => !c.closed && cms.caseSla(c).kind === "near").length;
+  const closedCases = cases.filter((c) => c.closed).length;
+  const nearList = cases.filter((c) => !c.closed && cms.caseSla(c).kind === "near");
+  const nearCases = nearList.length;
   const overdueCases = cases.filter((c) => !c.closed && cms.caseSla(c).kind === "overdue").length;
+
+  // "ใกล้ครบ SLA" แยกตามขั้นตอน — caseSla() คืนค่าของขั้นที่เคสกำลังอยู่ จึงจัดกลุ่มจากสถานะ
+  const nearByStage = SLA_STAGES.map((s) => ({
+    ...s,
+    label: cms.MASTER.slaConfig?.find((x) => x.stage === s.stage)?.label || s.short,
+    days: cms.MASTER.slaDays?.[s.stage],
+    count: nearList.filter((c) => STAGE_BY_STATUS[c.status] === s.stage).length,
+  }));
 
   const statusCounts = Object.keys(cms.STATUS).map((code) => ({ code, count: inPeriod.filter((c) => c.status === code).length, label: cms.STATUS[code].label }));
   const maxStatus = Math.max(1, ...statusCounts.map((s) => s.count));
@@ -271,7 +291,7 @@ function OfficerDashboard({ cases }) {
         <div className="kpi-card">
           <div className="kpi-label">เคสทั้งหมด</div>
           <div className="kpi-value">{totalCases}</div>
-          <div className="kpi-trend"><Icon name="inbox" size={14} /> ทั้งระบบ</div>
+          <div className="kpi-trend"><Icon name="inbox" size={14} /> {seesOwnCasesOnly(role.id) ? "เฉพาะเคสของฉัน" : "ทั้งระบบ"}</div>
           <div className="kpi-icon"><Icon name="inbox" size={18} /></div>
         </div>
         <div className="kpi-card">
@@ -280,18 +300,35 @@ function OfficerDashboard({ cases }) {
           <div className="kpi-trend"><Icon name="circle" size={10} /> รวม draft + active</div>
           <div className="kpi-icon"><Icon name="loupe" size={18} /></div>
         </div>
-        <div className="kpi-card warn">
-          <div className="kpi-label">ใกล้ครบ SLA (≤ 3 วัน)</div>
-          <div className="kpi-value">{nearCases}</div>
-          <div className="kpi-trend"><Icon name="clock" size={14} /> ต้องเร่งดำเนินการ</div>
-          <div className="kpi-icon"><Icon name="clock" size={18} /></div>
+        <div className="kpi-card success">
+          <div className="kpi-label">เสร็จสิ้น</div>
+          <div className="kpi-value">{closedCases}</div>
+          <div className="kpi-trend"><Icon name="check-circle" size={14} /> ปิดเคสแล้ว</div>
+          <div className="kpi-icon"><Icon name="check-circle" size={18} /></div>
         </div>
-        <div className="kpi-card danger">
+        <div className={`kpi-card ${overdueCases > 0 ? "danger" : "is-zero"}`}>
           <div className="kpi-label">เกินเวลา</div>
           <div className="kpi-value">{overdueCases}</div>
           <div className="kpi-trend down"><Icon name="alert" size={14} /> ต้องตรวจสอบเหตุผล</div>
           <div className="kpi-icon"><Icon name="alert" size={18} /></div>
         </div>
+      </div>
+
+      {/* ใกล้ครบ SLA แยกเป็น card ละขั้นตอน — ขั้นที่ยาว (ตรวจสอบ/กรรมการ/ค่าปรับ) แทบไม่เคย
+          โผล่ในตัวเลขรวม เพราะเกณฑ์ ≤ 3 วันเท่ากันทุกขั้น การแยก card ทำให้เห็นครบทุกขั้น */}
+      <div className="row" style={{ marginTop: 22, marginBottom: 10, gap: 10, alignItems: "baseline" }}>
+        <h3 style={{ margin: 0, fontSize: 15 }}>ใกล้ครบกำหนด SLA (≤ 3 วัน)</h3>
+        <span className="muted small">แยกตามขั้นตอน · รวม {nearCases} เคส</span>
+      </div>
+      <div className="kpi-grid">
+        {nearByStage.map((s) => (
+          <div key={s.stage} className={`kpi-card ${s.count > 0 ? "warn" : "is-zero"}`}>
+            <div className="kpi-label">{s.short}</div>
+            <div className="kpi-value">{s.count}</div>
+            <div className="kpi-trend">{s.label}{s.days ? ` · ภายใน ${s.days} วัน` : ""}</div>
+            <div className="kpi-icon"><Icon name="clock" size={18} /></div>
+          </div>
+        ))}
       </div>
 
       <div className="section-row" style={{ marginTop: 20 }}>
@@ -325,15 +362,16 @@ function OfficerDashboard({ cases }) {
         </div>
         <div className="table-wrap">
           <table className="data">
-            <thead><tr><th>E-tracking</th><th>ชื่อเคส</th><th>ผู้ถูกร้อง</th><th>พรบ.</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>SLA</th><th>วันที่</th></tr></thead>
+            <thead><tr><th>E-tracking</th><th>เลขรับ สสจ.</th><th>ชื่อเคส</th><th>ผู้ถูกร้อง</th><th>พรบ.</th><th>ผู้รับผิดชอบ</th><th>สถานะ</th><th>SLA</th><th>วันที่</th></tr></thead>
             <tbody>
               {recent.map((c) => (
                 <tr key={c.id} onClick={() => router.push(`/cases/${c.id}`)}>
                   <td className="num">{c.etracking || "—"}</td>
+                  <td className="num">{c.letterNo || "—"}</td>
                   <td style={{ fontWeight: 500, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</td>
                   <td>{c.respondent.business || c.respondent.licensee || "—"}</td>
                   <td><div className="tag-list">{c.laws.slice(0, 2).map((id) => <span key={id} className="chip">{cms.lawLabel(id)}</span>)}{c.laws.length > 2 && <span className="chip">+{c.laws.length - 2}</span>}</div></td>
-                  <td>{c.assignees.length === 0 ? <span className="muted small">— ยังไม่มอบหมาย</span> : c.assignees.map((id) => cms.officerName(id).trim().split(/\s+/)[0]).join(", ")}</td>
+                  <td>{c.assignees.length === 0 ? <span className="muted small">— ยังไม่มอบหมาย</span> : c.assignees.map((id) => cms.officerName(id)).join(", ")}</td>
                   <td><StatusBadge code={c.status} /></td>
                   <td><SLABadge sla={cms.caseSla(c)} /></td>
                   <td className="muted small">{cms.fmtThaiDateShort(c.postDate)}</td>
