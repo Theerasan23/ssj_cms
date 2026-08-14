@@ -1,4 +1,5 @@
 import CredentialsProvider from "next-auth/providers/credentials";
+import { authCookies } from "./authCookies";
 
 // authorize() runs server-side. In Docker the browser reaches the API at
 // http://localhost:3022/api (NEXT_PUBLIC_API_URL) but this container must reach it
@@ -9,6 +10,8 @@ const API = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://lo
 // The cms-api JWT is carried inside the NextAuth session so client calls can use it.
 export const authOptions = {
   session: { strategy: "jwt", maxAge: 12 * 60 * 60 },
+  // must stay in sync with middleware.js — see authCookies.js
+  cookies: authCookies,
   providers: [
     CredentialsProvider({
       name: "credentials",
