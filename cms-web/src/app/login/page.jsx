@@ -67,7 +67,7 @@ export default function LoginPage() {
             <div className="stat"><div className="v">{stats ? stats.statusCount : "—"}</div><div className="l">สถานะติดตาม</div></div>
           </div>
         </div>
-        <div className="art-foot">© 2569 สำนักงานสาธารณสุขจังหวัดนนทบุรี · CMS v3.1</div>
+        <div className="art-foot">© 2569 สำนักงานสาธารณสุขจังหวัดนนทบุรี · CMS</div>
       </div>
 
       <div className="login-form-side">
@@ -103,7 +103,7 @@ export default function LoginPage() {
           </button>
 
           <div className="small muted" style={{ textAlign: "center", marginTop: 8 }}>
-            สำนักงานสาธารณสุขจังหวัดนนทบุรี · v3.1
+            สำนักงานสาธารณสุขจังหวัดนนทบุรี
           </div>
         </form>
       </div>
