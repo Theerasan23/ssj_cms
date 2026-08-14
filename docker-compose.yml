@@ -1,8 +1,14 @@
 # CMS stack (API + web) — connects to your EXISTING MySQL, does not create one.
 #   docker compose up -d --build
 # Ports (host): web 3021, api 3022.
-# The API reaches your existing DB via host.docker.internal (the MySQL published on the host,
-# e.g. the `form_db` container on :3306). Set MYSQL_* in a root .env — see .env.example.
+#
+# The API reaches your existing MySQL container over the network that DB stack already uses
+# (db-network at the bottom of this file — joined, never created). In the root .env set
+# DB_NETWORK to that network's real docker name and MYSQL_HOST to the DB container's name;
+# see .env.example.
+#
+# Going through the host's published 3306 (host.docker.internal) also works, but on Linux
+# container→host traffic hits the host INPUT chain, so ufw silently drops it (ETIMEDOUT).
 name: cms
 
 services:
@@ -11,9 +17,11 @@ services:
     container_name: cms-api
     restart: unless-stopped
     extra_hosts:
-      - "host.docker.internal:host-gateway"   # lets the container reach the host's MySQL
+      - "host.docker.internal:host-gateway"   # fallback route to the host's published 3306
     environment:
       PORT: 3022
+      # name of the MySQL CONTAINER (resolved by docker DNS on db-network), e.g. bs_database.
+      # host.docker.internal only as a fallback — see the note at the top of this file.
       MYSQL_HOST: ${MYSQL_HOST:-host.docker.internal}
       MYSQL_PORT: ${MYSQL_PORT:-3306}
       MYSQL_USER: ${MYSQL_USER:-admin}
@@ -32,7 +40,8 @@ services:
     volumes:
       - api_uploads:/app/uploads
     networks:
-      - cms-network
+      - cms-network   # api ↔ web
+      - db-network    # api ↔ MySQL container
 
   web:
     build:
@@ -68,3 +77,11 @@ volumes:
 networks:
   cms-network:
     driver: bridge
+  # The MySQL stack's own network — compose only JOINS it, never creates or removes it,
+  # so `docker compose down` here cannot disturb the database stack.
+  # DB_NETWORK is the name docker actually gave it, which for a non-external network in
+  # another compose file is <project>_<name> (e.g. theerasan-network → xxx_theerasan-network):
+  #   docker inspect -f '{{range $$k,$$v := .NetworkSettings.Networks}}{{$$k}}{{end}}' bs_database
+  db-network:
+    external: true
+    name: ${DB_NETWORK:-cms-db}
