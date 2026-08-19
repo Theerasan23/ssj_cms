@@ -1,7 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const { requireAuth, requireRole } = require("../middleware/auth");
-const { SUPERVISOR_ROLES, isSupervisor, canSeeCase } = require("../auth/roles");
+const { SUPERVISOR_ROLES, canWriteCase, WRITE_DENIED_MSG } = require("../auth/roles");
 const cases = require("../services/cases.service");
 const attachments = require("../services/attachments.service");
 
@@ -20,24 +20,13 @@ function asArray(v) {
   return Array.isArray(v) ? v : String(v).split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-// Workflow writes:
-//  - หัวหน้า/รองหัวหน้า/admin: always
-//  - the assigned เจ้าหน้าที่ดำเนินการ (user accounts): they drive every step after assignment
-//  - the creator (เจ้าหน้าที่ธุรการ): only while the case is still pending approval (01)
-//  - เจ้าหน้าที่ค่าปรับ (role fine): only on the fine stage (04)
+// Workflow writes — กติกาเดียวกันทั้งระบบอยู่ที่ auth/roles.js canWriteCase
+// (ผู้รับมอบหมาย + หัวหน้า/รองหัวหน้า/แอดมิน · ผู้สร้างเฉพาะสถานะ 01 · ค่าปรับเฉพาะสถานะ 04)
 async function requireCaseActor(req, res, next) {
   try {
     const c = await cases.getCaseById(req.params.id);
     if (!c) return res.status(404).json({ error: "ไม่พบเคส" });
-    const u = req.user;
-    const allowed =
-      isSupervisor(u.roleId) ||
-      c.assignees.includes(u.userId) ||
-      (c.createdByUserId === u.userId && c.status === "01") ||
-      (u.roleId === "fine" && c.status === "04");
-    if (!allowed) {
-      return res.status(403).json({ error: "เฉพาะหัวหน้า/แอดมิน เจ้าหน้าที่ที่ได้รับมอบหมาย หรือเจ้าหน้าที่ค่าปรับ (เฉพาะขั้นชำระค่าปรับ) เท่านั้น" });
-    }
+    if (!canWriteCase(c, req.user)) return res.status(403).json({ error: WRITE_DENIED_MSG });
     next();
   } catch (e) { next(e); }
 }
@@ -68,10 +57,7 @@ router.get("/:id", async (req, res, next) => {
     if (c.isDraft && c.createdByUserId !== req.user.userId && req.user.roleId !== "admin") {
       return res.status(404).json({ error: "ไม่พบเคส" });
     }
-    // เจ้าหน้าที่ดำเนินการเปิดดูเคสของคนอื่นด้วยการยิง URL ตรง ๆ ไม่ได้
-    if (!canSeeCase(c, { id: req.user.roleId, userId: req.user.userId })) {
-      return res.status(404).json({ error: "ไม่พบเคส" });
-    }
+    // เปิดดูได้ทุกบทบาท — สิทธิ์แก้ไขถูกคุมที่ requireCaseActor/canWriteCase แยกต่างหาก
     res.json(c);
   } catch (e) { next(e); }
 });

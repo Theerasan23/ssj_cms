@@ -2,7 +2,7 @@
 // and implements case creation + workflow transitions.
 const pool = require("../db");
 const sla = require("./sla.service");
-const { SUPERVISOR_ROLES, isSupervisor, canSeeCase } = require("../auth/roles");
+const { SUPERVISOR_ROLES, canWriteCase, WRITE_DENIED_MSG } = require("../auth/roles");
 
 const CASE_SELECT = `
   SELECT c.*, s.name AS source_name, ch.name AS channel_name, d.name AS district_name, sd.name AS subdistrict_name, cu.name AS created_by_name
@@ -212,6 +212,8 @@ async function getAllCases() {
 }
 
 // Filtering mirrors the prototype's client-side case-list logic.
+// รายการนี้ไม่กรองตามบทบาท (นอกจาก draft) — ทุกบทบาทเห็นและเปิดดูเคสได้ทั้งหมด
+// สิทธิ์ที่จำกัดคือการแก้ไข/ดำเนินการ บังคับด้วย canWriteCase
 async function listCases(filters, currentRole) {
   const { q, status = [], law = [], slaFilter = "", scope = "all", page = 1, pageSize = 20 } = filters;
   let all = await getAllCases();
@@ -219,12 +221,10 @@ async function listCases(filters, currentRole) {
   all = all.filter((c) => {
     // drafts are private to their creator until submitted for approval
     if (c.isDraft && !(currentRole && currentRole.userId != null && c.createdByUserId === currentRole.userId)) return false;
-    // เจ้าหน้าที่ดำเนินการเห็นเฉพาะเคสของตัวเอง — บังคับเสมอ ไม่ขึ้นกับ scope ที่ client ส่งมา
-    if (!canSeeCase(c, currentRole)) return false;
-    if (scope === "mine" && currentRole) {
-      const byMe = currentRole.userId != null && c.createdByUserId === currentRole.userId;
-      const assignedToMe = currentRole.userId != null && c.assignees.includes(currentRole.userId);
-      if (!byMe && !assignedToMe) return false;
+    // "เคสของฉัน" = เคสที่ได้รับมอบหมายเท่านั้น (เคสที่ตัวเองสร้างไม่นับ — ดูที่ scope=all)
+    if (scope === "mine") {
+      if (!currentRole || currentRole.userId == null) return false;
+      if (!c.assignees.includes(currentRole.userId)) return false;
     }
     if (q) {
       const needle = q.toLowerCase();
@@ -923,10 +923,17 @@ async function unlockCase(id, byName) {
   return getCaseById(id);
 }
 
-// Edit a pending case (status 01). Allowed for the creator or head/admin.
+// Edit a case. Allowed for assignees + head/deputy/admin (creator only while still 01).
 // Editing a returned case re-submits it for approval.
 async function updateCase(id, rawPayload, user) {
   const c = await fetchOr404(id);
+  // สิทธิ์มาก่อนการตรวจข้อมูล — คนที่แก้ไม่ได้ต้องเจอ 403 ไม่ใช่ error ว่ากรอกข้อมูลไม่ครบ
+  // admin แก้ไขได้ทุกสถานะ (รวมถึงเคสที่ล็อก/ปิดแล้ว) — บทบาทอื่นใช้กติกากลาง canWriteCase
+  // และเคสที่ล็อก (เกิน SLA) แก้ไม่ได้จนกว่าหัวหน้าจะขยายกำหนด หรือแอดมินปลดล็อก
+  if (user.roleId !== "admin") {
+    if (!canWriteCase(c, user)) { const e = new Error(WRITE_DENIED_MSG); e.status = 403; throw e; }
+    if (sla.isCaseLocked(c)) { const e = new Error("เคสถูกล็อก แก้ไขไม่ได้"); e.status = 423; throw e; }
+  }
   // PATCH means a partial update: the UPDATE below writes every column, so any field the
   // caller omitted would be overwritten with NULL. Merge onto the stored case first so an
   // absent key keeps its current value and only what was actually sent changes.
@@ -943,15 +950,6 @@ async function updateCase(id, rawPayload, user) {
   if (!partialSave) {
     const errors = validateCreate(payload);
     if (errors.length) { const e = new Error(errors[0]); e.status = 400; e.errors = errors; throw e; }
-  }
-  // admin แก้ไขได้ทุกสถานะ (รวมถึงเคสที่ล็อก/ปิดแล้ว) และไม่ต้องเป็นผู้สร้าง
-  // ผู้สร้างเคส (คนกรอกเข้าระบบ) และผู้ที่ได้รับมอบหมายจากหัวหน้า แก้ไขได้ทุกสถานะเช่นกัน
-  // แต่เคสที่ล็อก (เกิน SLA) แก้ไม่ได้จนกว่าหัวหน้าจะขยายกำหนด หรือแอดมินปลดล็อก
-  if (user.roleId !== "admin") {
-    if (sla.isCaseLocked(c)) { const e = new Error("เคสถูกล็อก แก้ไขไม่ได้"); e.status = 423; throw e; }
-    const isCreator = c.createdByUserId === user.userId;
-    const isAssignee = Array.isArray(c.assignees) && c.assignees.includes(user.userId);
-    if (!isCreator && !isAssignee) { const e = new Error("แก้ไขได้เฉพาะเจ้าหน้าที่ผู้สร้างเคส ผู้ที่ได้รับมอบหมาย หรือแอดมิน"); e.status = 403; throw e; }
   }
 
   const conn = await pool.getConnection();
@@ -1012,11 +1010,7 @@ async function setEtracking(id, etracking, user) {
   const value = String(etracking || "").trim();
   if (!value) { const e = new Error("กรุณากรอกเลข E-tracking"); e.status = 400; throw e; }
   const c = await fetchOr404(id);
-  const allowed =
-    isSupervisor(user.roleId) ||
-    c.assignees.includes(user.userId) ||
-    c.createdByUserId === user.userId;
-  if (!allowed) { const e = new Error("เพิ่มเลข E-tracking ได้เฉพาะผู้สร้างเคส เจ้าหน้าที่ที่ได้รับมอบหมาย หรือหัวหน้า/แอดมิน"); e.status = 403; throw e; }
+  if (!canWriteCase(c, user)) { const e = new Error(WRITE_DENIED_MSG); e.status = 403; throw e; }
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
