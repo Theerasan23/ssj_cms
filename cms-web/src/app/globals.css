@@ -421,6 +421,17 @@ a { color: inherit; text-decoration: none; }
   transition: box-shadow .16s ease, border-color .16s ease;
 }
 .kpi-card:hover { box-shadow: var(--shadow-md); }
+/* การ์ดที่กดเข้าไปดูรายการเคสตามตัวกรองได้ */
+.kpi-card.is-link { cursor: pointer; }
+.kpi-card.is-link:hover { border-color: var(--primary-500); transform: translateY(-1px); }
+.kpi-card.is-link:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 2px; }
+.kpi-card.is-link::after {
+  content: "";
+  position: absolute; inset: auto 14px 12px auto;
+  width: 6px; height: 6px; border-right: 1.5px solid var(--text-soft); border-top: 1.5px solid var(--text-soft);
+  transform: rotate(45deg); opacity: 0; transition: opacity .16s ease;
+}
+.kpi-card.is-link:hover::after { opacity: 1; }
 /* label leaves room for the icon badge pinned to the top-right */
 .kpi-card .kpi-label {
   padding-right: 44px; min-height: 18px;

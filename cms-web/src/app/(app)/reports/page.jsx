@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { Avatar, Donut } from "@/components/ui";
+import { Avatar, Donut, StatusBadge } from "@/components/ui";
 import { useApp } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
 
@@ -65,6 +65,9 @@ export default function ReportsPage() {
   const avgDays = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : null;
   const maxMonth = Math.max(1, ...monthlyData.map((d) => d.count));
   const lawData = cms.MASTER.laws.map((l) => ({ id: l.id, label: l.label, count: inPeriod.filter((c) => c.laws && c.laws.includes(l.id)).length })).filter((l) => l.count > 0);
+  // ย้ายมาจากหน้าหลัก — กระจายตัวตามสถานะของเคสที่สร้างในช่วงที่เลือก
+  const statusCounts = Object.keys(cms.STATUS).map((code) => ({ code, count: inPeriod.filter((c) => c.status === code).length, label: cms.STATUS[code].label }));
+  const maxStatus = Math.max(1, ...statusCounts.map((s) => s.count));
 
   return (
     <main className="page fade-in">
@@ -118,8 +121,25 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="card">
-          <div className="card-header"><h3>เคสตามพรบ.</h3></div>
+          <div className="card-header"><h3>เคสตามพรบ.</h3><span className="muted small">{lawData.length} หมวด</span></div>
           <div className="card-body"><Donut data={lawData} /></div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 20 }}>
+        <div className="card-header">
+          <div><h3>เคสตามสถานะ</h3><div className="card-sub">{Object.keys(cms.STATUS).length} สถานะ · {totalCases} เคส (สร้างใน {period} วันล่าสุด)</div></div>
+        </div>
+        <div className="card-body">
+          <div className="bar-chart">
+            {statusCounts.map((s) => {
+              const h = Math.max(8, (s.count / maxStatus) * 100);
+              return <div key={s.code} className="bar" style={{ height: `${h}%`, background: `var(--st-${s.code}-fg)` }} title={`${s.label}: ${s.count}`}>{s.count > 0 && <div className="bar-value">{s.count}</div>}</div>;
+            })}
+          </div>
+          <div className="bar-chart-x">{statusCounts.map((s) => <span key={s.code}>{s.code}</span>)}</div>
+          <div className="hr" />
+          <div className="tag-list">{statusCounts.map((s) => <StatusBadge key={s.code} code={s.code} size="md" />)}</div>
         </div>
       </div>
 

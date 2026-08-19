@@ -41,7 +41,8 @@ export default function CaseCreatePage() {
     await createCase(payload, false);
     toast.push({ kind: "success", title: "บันทึกเคสสำเร็จ", msg: "ส่งให้หัวหน้ากลุ่มงานอนุมัติแล้ว (สถานะ 'รอมอบหมาย')" });
     actions.reloadNotifications?.();
-    router.push("/cases?scope=mine");
+    // "เคสของฉัน" = เคสที่ได้รับมอบหมายเท่านั้น เคสที่เพิ่งสร้างจึงยังไม่อยู่ในนั้น → กลับไปที่รายการทั้งหมด
+    router.push("/cases");
   }
 
   // บันทึกร่าง → ไปหน้าเคสเพื่อแก้ไข/ส่งขออนุมัติภายหลัง

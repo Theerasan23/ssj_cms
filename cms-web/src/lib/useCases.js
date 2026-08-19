@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
 // Fetches all cases (client-side filtering mirrors the prototype's behaviour).
+// ทุกบทบาทเห็นและเปิดดูเคสได้ทั้งหมด — สิทธิ์แก้ไขคุมแยกที่ roles.js canWriteCase
 export function useAllCases() {
   const [cases, setCases] = useState(null);
   const [loading, setLoading] = useState(true);

@@ -7,7 +7,7 @@ import { StatusBadge, SLABadge, Avatar, Tabs, DataCard, FormField, SLATimelineHo
 import { AssignModal, InvestigationModal, BoardModal, FineModal, FollowupModal, ExtendSlaModal, fmtTimestamp } from "@/components/CaseModals";
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
-import { isSupervisor } from "@/lib/roles";
+import { isSupervisor, canWriteCase } from "@/lib/roles";
 
 // ป้าย/ไอคอนของแนวทางที่เลือกจากการ์ด 4 ปุ่ม (ตาราง case_decisions)
 const DECISION_UI = {
@@ -23,6 +23,7 @@ export default function CaseDetailPage() {
   const { role, cms, actions } = useApp();
   const toast = useToasts();
   const [c, setC] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [activeTab, setActiveTab] = useState("data");
@@ -36,8 +37,9 @@ export default function CaseDetailPage() {
     let alive = true;
     setLoading(true);
     api.get(`/cases/${id}`)
-      .then((data) => { if (alive) setC(data); })
-      .catch(() => { if (alive) setC(null); })
+      .then((data) => { if (alive) { setC(data); setLoadError(""); } })
+      // 403 = ไม่มีสิทธิ์เปิดดู (เจ้าหน้าที่ดำเนินการเปิดได้เฉพาะเคสที่ได้รับมอบหมาย) — บอกเหตุผลตามที่ API ส่งมา
+      .catch((e) => { if (alive) { setC(null); setLoadError(e.message || ""); } })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [id]);
@@ -49,7 +51,7 @@ export default function CaseDetailPage() {
         <div className="card">
           <div className="table-empty">
             <div className="empty-icon"><Icon name="alert" size={26} /></div>
-            <div style={{ fontWeight: 600 }}>ไม่พบเคสที่ร้องขอ</div>
+            <div style={{ fontWeight: 600 }}>{loadError || "ไม่พบเคสที่ร้องขอ"}</div>
             <button className="btn btn-primary" onClick={() => router.push("/cases")}>กลับสู่รายการเคส</button>
           </div>
         </div>
@@ -60,22 +62,21 @@ export default function CaseDetailPage() {
   const canAssign = isSupervisor(role.id);
   const isAssignee = c.assignees.includes(role.userId);
   const isCreator = c.createdByUserId === role.userId;
-  // ขั้นตอน workflow หลังมอบหมาย — หัวหน้า/แอดมิน หรือเจ้าหน้าที่ดำเนินการที่ได้รับมอบหมาย
+  // ขั้นตอน workflow หลังมอบหมาย — หัวหน้า/รองหัวหน้า/แอดมิน หรือเจ้าหน้าที่ที่ได้รับมอบหมาย
   const canWork = canAssign || isAssignee;
-  // ขั้นชำระค่าปรับ (04) — เพิ่มเจ้าหน้าที่ค่าปรับ (role fine) เข้ามาทำงานส่วนนี้โดยเฉพาะ
-  const canFine = canWork || role.id === "fine";
-  // จัดการไฟล์แนบ/แก้ข้อมูล — ผู้สร้าง (ธุรการ) ทำได้เฉพาะตอนยังรอมอบหมาย
-  const canEdit = canWork || (isCreator && c.status === "01") || (role.id === "fine" && c.status === "04");
+  // ขั้นชำระค่าปรับ — เจ้าหน้าที่ค่าปรับ (role fine) ทำได้เฉพาะสถานะ 04 เท่านั้น
+  const canFine = canWork || (role.id === "fine" && c.status === "04");
+  // ทุกคนเปิดดูเคสได้ แต่แก้ไข/ดำเนินการได้ตามกติกากลาง (ตรงกับ API canWriteCase)
+  const canEdit = canWriteCase(c, role);
   const closedCase = c.closed;
   const sla = cms.caseSla(c);
   const locked = cms.isCaseLocked(c);
   const lock = cms.lockReason(c);
   const isAdmin = role.id === "admin";
-  // admin แก้ไขได้ทุกสถานะ (รวมเคสที่ล็อก/ปิดแล้ว)
-  // ผู้สร้างเคส (คนกรอกเข้าระบบ) และผู้ที่ได้รับมอบหมาย แก้ไขได้ทุกสถานะ ยกเว้นเคสที่ล็อก
-  const canEditCase = isAdmin || (!locked && (isCreator || isAssignee));
-  // E-tracking ไม่บังคับตอนสร้าง — ผู้สร้างเคสหรือผู้รับมอบหมาย (รวมหัวหน้า/แอดมิน) เพิ่ม/แก้ไขภายหลังได้
-  const canSetEtracking = canWork || isCreator;
+  // admin แก้ไขได้ทุกสถานะ (รวมเคสที่ล็อก/ปิดแล้ว) — คนอื่นแก้ไม่ได้ถ้าเคสถูกล็อก
+  const canEditCase = isAdmin || (!locked && canEdit);
+  // E-tracking ไม่บังคับตอนสร้าง — ผู้รับมอบหมาย/หัวหน้า/แอดมิน หรือผู้สร้างขณะยังรอมอบหมาย เพิ่มภายหลังได้
+  const canSetEtracking = canWork || (isCreator && c.status === "01");
   const canUnlock = role.id === "admin";
   // หัวหน้า/รองหัวหน้า (และแอดมิน) ขยายกำหนด SLA ได้โดยระบุจำนวนวัน
   const canExtend = isSupervisor(role.id);
@@ -221,7 +222,8 @@ export default function CaseDetailPage() {
         title: c.returned ? "ส่งขออนุมัติอีกครั้งแล้ว" : "ส่งขออนุมัติแล้ว",
         msg: "หัวหน้ากลุ่มงานได้รับแจ้งเตือนแล้ว (สถานะ 'รอมอบหมาย')",
       });
-      router.push("/cases?scope=mine");
+      // "เคสของฉัน" = เฉพาะเคสที่ได้รับมอบหมาย → ส่งกลับไปที่รายการเคสทั้งหมด
+      router.push("/cases");
     } catch (e) {
       toast.push({ kind: "danger", title: "ส่งขออนุมัติไม่สำเร็จ", msg: e.message });
     }
@@ -683,6 +685,19 @@ export default function CaseDetailPage() {
               <Icon name="edit" size={14} /> แก้ไข & ส่งใหม่
             </button>
           )}
+        </div>
+      )}
+
+      {/* ทุกบทบาทเปิดดูเคสได้ แต่ถ้าไม่มีสิทธิ์เขียนจะไม่มีปุ่มดำเนินการเลย — บอกเหตุผลไว้ไม่ให้งง */}
+      {!canEdit && (
+        <div className="lock-banner" style={{ background: "var(--surface-2, var(--surface))", borderColor: "var(--border)", color: "var(--text-soft)" }}>
+          <div className="lock-ic" style={{ background: "var(--text-soft)" }}><Icon name="eye" size={20} /></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="lock-title" style={{ color: "var(--text)" }}>โหมดดูอย่างเดียว</div>
+            <div className="lock-body" style={{ color: "var(--text-soft)" }}>
+              แก้ไขหรือดำเนินการเคสนี้ได้เฉพาะเจ้าหน้าที่ที่ได้รับมอบหมาย หัวหน้า/รองหัวหน้ากลุ่มงาน และแอดมิน
+            </div>
+          </div>
         </div>
       )}
 

@@ -279,10 +279,19 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
                 <input className="input" placeholder="เช่น 5,000 บาท / ตามประกาศฯ" value={form.bountyAmount} onChange={(e) => update("bountyAmount", e.target.value)} />
               </FormField>
             </div>
-            <label className="checkbox">
-              <input type="checkbox" checked={form.bountyRequested} onChange={(e) => update("bountyRequested", e.target.checked)} />
-              ประสงค์รับสินบนนำจับ
-            </label>
+            {/* เลือกชัดเจนทั้งสองทาง — เดิมเป็น checkbox ตัวเดียว "ไม่ติ๊ก" จึงแยกไม่ออกว่าไม่ประสงค์รับ หรือยังไม่ได้ถาม */}
+            <div className="row" style={{ gap: 20 }}>
+              <label className="radio">
+                <input type="radio" name="bountyRequested" checked={form.bountyRequested}
+                  onChange={() => update("bountyRequested", true)} />
+                ประสงค์รับสินบนนำจับ
+              </label>
+              <label className="radio">
+                <input type="radio" name="bountyRequested" checked={!form.bountyRequested}
+                  onChange={() => update("bountyRequested", false)} />
+                ไม่ประสงค์รับ
+              </label>
+            </div>
             {form.bountyRequested && (
               <div className="form-grid cols-2">
                 <FormField label="ชื่อ (ผู้ประสงค์รับ)" req error={errors.bountyFirstName}>

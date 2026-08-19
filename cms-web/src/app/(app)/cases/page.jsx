@@ -7,7 +7,7 @@ import { StatusBadge, SLABadge, ChipPicker } from "@/components/ui";
 import { ExportButtons } from "@/components/ExportButtons";
 import { useApp } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
-import { SUPERVISOR_ROLES, seesOwnCasesOnly } from "@/lib/roles";
+import { SUPERVISOR_ROLES } from "@/lib/roles";
 
 export default function CaseListPage() {
   return (
@@ -23,22 +23,27 @@ function CaseList() {
   const searchParams = useSearchParams();
   const { cases, loading } = useAllCases();
 
+  // ตัวกรองรับค่าเริ่มต้นจาก URL ได้ — การ์ดบนหน้าหลักลิงก์มาที่นี่พร้อมตัวกรองของมัน
+  // (?status=02 หรือ ?status=01,02 · ?sla=near|overdue|in-time · ?state=open|closed)
   const [query, setQuery] = useState(searchParams.get("q") || "");
-  const [statusFilter, setStatusFilter] = useState([]);
+  const [statusFilter, setStatusFilter] = useState(() => (searchParams.get("status") || "").split(",").filter(Boolean));
   const [lawFilter, setLawFilter] = useState([]);
-  const [slaFilter, setSlaFilter] = useState("");
-  const ownCasesOnly = seesOwnCasesOnly(role.id);
+  const [slaFilter, setSlaFilter] = useState(() => {
+    const v = searchParams.get("sla") || "";
+    return ["near", "overdue", "in-time"].includes(v) ? v : "";
+  });
+  const [stateFilter, setStateFilter] = useState(() => {
+    const v = searchParams.get("state") || "";
+    return ["open", "closed"].includes(v) ? v : "";
+  });
   const [scope, setScope] = useState(searchParams.get("scope") === "mine" ? "mine" : "all");
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(1);
   const pageSize = 20;
 
   const filtered = useMemo(() => cases.filter((c) => {
-    if (scope === "mine") {
-      const byMe = role.userId != null && c.createdByUserId === role.userId;
-      const assignedToMe = role.userId != null && c.assignees.includes(role.userId);
-      if (!byMe && !assignedToMe) return false;
-    }
+    // "เคสของฉัน" = เฉพาะเคสที่ได้รับมอบหมาย (เคสที่ตัวเองสร้างอยู่ในแท็บ "เคสทั้งหมด")
+    if (scope === "mine" && !(role.userId != null && c.assignees.includes(role.userId))) return false;
     if (query) {
       const q = query.toLowerCase();
       const hay = [c.etracking, c.letterNo, c.title, c.respondent.business, c.respondent.licensee].join(" ").toLowerCase();
@@ -46,19 +51,22 @@ function CaseList() {
     }
     if (statusFilter.length && !statusFilter.includes(c.status)) return false;
     if (lawFilter.length && !c.laws.some((l) => lawFilter.includes(l))) return false;
+    if (stateFilter === "open" && c.closed) return false;
+    if (stateFilter === "closed" && !c.closed) return false;
     if (slaFilter) {
       const sla = cms.caseSla(c);
       if (slaFilter === "near" && sla.kind !== "near") return false;
       if (slaFilter === "overdue" && sla.kind !== "overdue") return false;
-      if (slaFilter === "in-time" && sla.kind !== "in-time") return false;
+      // "ในเวลา" ต้องรวม kind "far" (ยังเหลือเวลาอีกมาก) ด้วย ไม่งั้นเคสที่สบาย ๆ จะหายไปจากทุกตัวกรอง
+      if (slaFilter === "in-time" && sla.kind !== "in-time" && sla.kind !== "far") return false;
     }
     return true;
-  }), [cases, query, statusFilter, lawFilter, slaFilter, scope, role, cms]);
+  }), [cases, query, statusFilter, lawFilter, slaFilter, stateFilter, scope, role, cms]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   useEffect(() => { if (page > totalPages) setPage(1); }, [filtered, totalPages, page]);
   const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const activeFiltersCount = statusFilter.length + lawFilter.length + (slaFilter ? 1 : 0) + (query ? 1 : 0);
+  const activeFiltersCount = statusFilter.length + lawFilter.length + (slaFilter ? 1 : 0) + (stateFilter ? 1 : 0) + (query ? 1 : 0);
 
   if (loading) return <main className="page"><div className="muted">กำลังโหลด…</div></main>;
 
@@ -73,13 +81,10 @@ function CaseList() {
         </div>
         <div className="page-actions">
           <div className="row" style={{ gap: 8 }}>
-            {/* เจ้าหน้าที่ดำเนินการได้รับเฉพาะเคสของตัวเองจาก API อยู่แล้ว ตัวเลือกนี้จึงไม่มีความหมาย */}
-            {!ownCasesOnly && (
-              <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, padding: 2, background: "var(--surface)" }}>
-                <button className={`btn btn-sm ${scope === "all" ? "btn-primary" : "btn-ghost"}`} onClick={() => setScope("all")}>เคสทั้งหมด</button>
-                <button className={`btn btn-sm ${scope === "mine" ? "btn-primary" : "btn-ghost"}`} onClick={() => setScope("mine")}>เคสของฉัน</button>
-              </div>
-            )}
+            <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, padding: 2, background: "var(--surface)" }}>
+              <button className={`btn btn-sm ${scope === "all" ? "btn-primary" : "btn-ghost"}`} onClick={() => setScope("all")}>เคสทั้งหมด</button>
+              <button className={`btn btn-sm ${scope === "mine" ? "btn-primary" : "btn-ghost"}`} onClick={() => setScope("mine")}>เคสของฉัน</button>
+            </div>
             <ExportButtons rows={() => filtered} columns={[
               { header: "E-tracking", value: (c) => c.etracking || "" },
               { header: "เลขรับ สสจ.", value: (c) => c.letterNo || "" },
@@ -112,7 +117,7 @@ function CaseList() {
               <Icon name={showFilters ? "chevron-up" : "chevron-down"} size={14} />
             </button>
             {activeFiltersCount > 0 && (
-              <button className="btn btn-ghost btn-sm" onClick={() => { setStatusFilter([]); setLawFilter([]); setSlaFilter(""); setQuery(""); }}>ล้างทั้งหมด</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setStatusFilter([]); setLawFilter([]); setSlaFilter(""); setStateFilter(""); setQuery(""); }}>ล้างทั้งหมด</button>
             )}
           </div>
           {showFilters && (
@@ -129,6 +134,11 @@ function CaseList() {
                 <div className="field-label small">SLA</div>
                 <ChipPicker single options={[{ id: "in-time", label: "ในเวลา" }, { id: "near", label: "ใกล้ครบ ≤ 3 วัน" }, { id: "overdue", label: "เกินเวลา / ล็อก" }]}
                   value={slaFilter ? [slaFilter] : []} onChange={(arr) => setSlaFilter(arr[0] === slaFilter ? "" : arr[0] || "")} />
+              </div>
+              <div className="field">
+                <div className="field-label small">การปิดเคส</div>
+                <ChipPicker single options={[{ id: "open", label: "ยังไม่ปิด" }, { id: "closed", label: "ปิดแล้ว" }]}
+                  value={stateFilter ? [stateFilter] : []} onChange={(arr) => setStateFilter(arr[0] === stateFilter ? "" : arr[0] || "")} />
               </div>
             </div>
           )}

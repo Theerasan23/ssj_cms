@@ -14,6 +14,9 @@ const NAV_ITEMS = [
   { key: "dashboard", label: "หน้าหลัก", icon: "home", href: "/dashboard", match: "/dashboard", roles: ["supply", "officer", "fine", ...SUPERVISOR_ROLES, "exec"] },
   { key: "approvals", label: "รายการขออนุมัติ", icon: "approve", href: "/approvals", match: "/approvals", roles: SUPERVISOR_ROLES },
   { key: "cases", label: "เคสร้องเรียน", icon: "inbox", href: "/cases", match: "/cases", roles: ["supply", "officer", "fine", ...SUPERVISOR_ROLES, "exec"] },
+  // ธุรการเป็นผู้บันทึกเคสเข้าระบบ เมนูสองอันนี้จึงเป็นมุมมอง "เอกสารของฉัน" — ทั้งหมด กับเฉพาะร่างที่ยังค้าง
+  { key: "documents", label: "เอกสารทั้งหมด", icon: "stack", href: "/documents", match: "/documents", roles: ["supply"] },
+  { key: "drafts", label: "เอกสารฉบับร่าง", icon: "file", href: "/drafts", match: "/drafts", roles: ["supply"] },
   { key: "committee", label: "คณะกรรมการ", icon: "users", href: "/committee", match: "/committee", roles: ["officer", ...SUPERVISOR_ROLES] },
   { key: "fines", label: "ค่าปรับ", icon: "coin", href: "/fines", match: "/fines", roles: ["officer", "fine", ...SUPERVISOR_ROLES] },
   { key: "reports", label: "รายงาน · KPI", icon: "chart", href: "/reports", match: "/reports", roles: [...SUPERVISOR_ROLES, "exec"] },
@@ -25,6 +28,8 @@ function pageTitleFor(pathname) {
   if (pathname === "/cases/new") return { title: "สร้างเคสร้องเรียน", sub: "บันทึกเรื่องร้องเรียนใหม่เข้าระบบ" };
   if (pathname.startsWith("/cases/")) return { title: "รายละเอียดเคส", sub: "ดำเนินการตามขั้นตอน workflow" };
   if (pathname.startsWith("/cases")) return { title: "เคสร้องเรียน", sub: "บริหารและติดตามทุกเคสในระบบ" };
+  if (pathname.startsWith("/drafts")) return { title: "เอกสารฉบับร่าง", sub: "เคสที่บันทึกไว้แต่ยังไม่ได้ส่งขออนุมัติ" };
+  if (pathname.startsWith("/documents")) return { title: "เอกสารทั้งหมด", sub: "เอกสารที่คุณบันทึกเข้าระบบ · ร่างและที่ส่งขออนุมัติแล้ว" };
   if (pathname.startsWith("/committee")) return { title: "คณะกรรมการ", sub: "เคสที่รอเข้าประชุมและประวัติมติ" };
   if (pathname.startsWith("/fines")) return { title: "ค่าปรับ", sub: "ติดตามรายการเปรียบเทียบปรับและการชำระ" };
   if (pathname.startsWith("/reports")) return { title: "รายงาน · KPI", sub: "Dashboard ภาพรวมและการ Export ข้อมูล" };

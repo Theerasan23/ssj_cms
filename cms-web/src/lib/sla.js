@@ -33,10 +33,12 @@ export function computeSlaStage(anchorIso, slaDays, targetIso, todayIso) {
     return targetIso <= due ? { kind: "in-time", label: "ในเวลา" } : { kind: "overdue", label: "เกินเวลา" };
   }
   const due = offsetDays(anchorIso, slaDays);
+  // daysLeft ติดมากับผลลัพธ์ด้วย (ติดลบ = เลยกำหนด) — dashboard ใช้หาเคสที่ด่วนที่สุด
+  // โดยไม่ต้องไปแกะตัวเลขจากข้อความ label
   const daysLeft = Math.ceil((new Date(due) - new Date(todayIso)) / 86400000);
-  if (daysLeft < 0) return { kind: "overdue", label: `เกินเวลา ${Math.abs(daysLeft)} วัน` };
-  if (daysLeft <= 3) return { kind: "near", label: `เหลือ ${daysLeft} วัน` };
-  return { kind: "far", label: `เหลือ ${daysLeft} วัน` };
+  if (daysLeft < 0) return { kind: "overdue", label: `เกินเวลา ${Math.abs(daysLeft)} วัน`, daysLeft, due };
+  if (daysLeft <= 3) return { kind: "near", label: `เหลือ ${daysLeft} วัน`, daysLeft, due };
+  return { kind: "far", label: `เหลือ ${daysLeft} วัน`, daysLeft, due };
 }
 
 export function caseSlaSnapshot(c) {

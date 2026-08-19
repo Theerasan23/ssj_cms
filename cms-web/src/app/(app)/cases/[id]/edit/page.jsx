@@ -48,7 +48,8 @@ export default function CaseEditPage() {
         msg: "หัวหน้ากลุ่มงานได้รับแจ้งเตือนแล้ว (สถานะ 'รอมอบหมาย')",
       });
       actions.reloadNotifications?.();
-      router.push("/cases?scope=mine");
+      // "เคสของฉัน" = เฉพาะเคสที่ได้รับมอบหมาย → ส่งกลับไปที่รายการเคสทั้งหมด
+      router.push("/cases");
       return;
     }
     toast.push({ kind: "success", title: "บันทึกการแก้ไขสำเร็จ", msg: "อัปเดตข้อมูลเคสแล้ว" });
