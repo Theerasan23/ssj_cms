@@ -12,7 +12,13 @@ router.use(requireAuth);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: attachments.MAX_BYTES, files: 10 },
-  fileFilter: (req, file, cb) => cb(null, attachments.ALLOWED_MIME.has(file.mimetype)),
+  // เดิมส่ง cb(null, false) → multer ทิ้งไฟล์เงียบ ๆ ตอบ 201 ผู้ใช้เข้าใจว่าแนบสำเร็จทั้งที่ไฟล์หาย
+  fileFilter: (req, file, cb) => {
+    if (attachments.ALLOWED_MIME.has(file.mimetype)) return cb(null, true);
+    const e = new Error(`ชนิดไฟล์ไม่รองรับ: ${file.originalname} (รับเฉพาะ PDF / JPG / PNG / WEBP / GIF)`);
+    e.status = 400;
+    cb(e);
+  },
 });
 
 function asArray(v) {
@@ -69,7 +75,14 @@ router.post("/", requireRole("supply", ...SUPERVISOR_ROLES), async (req, res, ne
     const c = await cases.getCaseById(id);
     res.status(201).json(c);
   } catch (e) {
-    if (e.code === "ER_DUP_ENTRY") { e.status = 409; e.message = "เลข E-tracking นี้มีในระบบแล้ว"; }
+    // แยกให้ออกว่าซ้ำที่คีย์ไหน — เดิมรหัสเคสชนกันเองก็ขึ้นว่า "E-tracking ซ้ำ" ทั้งที่ผู้ใช้อาจ
+    // ไม่ได้กรอก E-tracking เลย ทำให้แก้ตามข้อความไม่ได้
+    if (e.code === "ER_DUP_ENTRY") {
+      e.status = 409;
+      e.message = /etracking/i.test(e.message)
+        ? "เลข E-tracking นี้มีในระบบแล้ว"
+        : "รหัสเคสที่สุ่มได้ซ้ำกับเคสเดิม กรุณากดบันทึกอีกครั้ง";
+    }
     next(e);
   }
 });

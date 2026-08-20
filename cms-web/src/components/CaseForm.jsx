@@ -10,6 +10,17 @@ import { useApp, useToasts } from "@/context/AppContext";
 // spelled variant still counts. Keep in sync with cms-api cases.service.js.
 const isOtherProblem = (name) => String(name || "").replace(/\s/g, "") === "อื่นๆ";
 
+// ความกว้างคอลัมน์จริงในตาราง cases — MySQL เปิด STRICT_TRANS_TABLES ถ้าเกินจะ error ทั้งฟอร์ม
+// (เดิมมีแค่ปัญหาอื่น ๆ ที่ใส่ maxLength ไว้ ช่องอื่นพิมพ์/วางยาวเกินได้จนบันทึกไม่ผ่าน)
+// description เป็น TEXT จึงไม่ต้องจำกัด
+const MAX = {
+  etracking: 64, letterNo: 64, docNo: 64, postNo: 64, title: 200,
+  name: 191, phone: 32, email: 128, address: 255,
+  licensee: 191, business: 191, licenseNo: 128,
+  product: 191, productLicense: 128, problemOther: 191,
+  bountyAmount: 191, bountyName: 128, bountyNo: 128,
+};
+
 export function blankCaseForm(todayIso) {
   return {
     // postDate ตั้งต้นว่าง — ถ้า pre-fill เป็นวันนี้ เคสที่ยังไม่มีเลข POST จะเริ่มนับ SLA ทันที
@@ -151,17 +162,17 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
           <div className="section-body">
             <div className="form-grid cols-2">
               <FormField label="E-tracking Number" error={errors.etracking} hint="ไม่บังคับ — ใส่ภายหลังได้ในหน้ารายละเอียดเคส (โดยผู้สร้างเคสหรือผู้ที่ได้รับมอบหมาย)">
-                <input className={`input mono ${errors.etracking ? "error" : ""}`} placeholder="เช่น ECP-2569-00123" value={form.etracking} onChange={(e) => update("etracking", e.target.value)} />
+                <input className={`input mono ${errors.etracking ? "error" : ""}`} maxLength={MAX.etracking} placeholder="เช่น ECP-2569-00123" value={form.etracking} onChange={(e) => update("etracking", e.target.value)} />
               </FormField>
               <div></div>
               <FormField label="เลขที่ลงรับ สสจ." req error={errors.letterNo}>
-                <input className={`input mono ${errors.letterNo ? "error" : ""}`} placeholder="เช่น นบ 0032.2/345" value={form.letterNo} onChange={(e) => update("letterNo", e.target.value)} />
+                <input className={`input mono ${errors.letterNo ? "error" : ""}`} maxLength={MAX.letterNo} placeholder="เช่น นบ 0032.2/345" value={form.letterNo} onChange={(e) => update("letterNo", e.target.value)} />
               </FormField>
               <FormField label="วันที่ลงรับ สสจ." req error={errors.letterDate} warning={warnings.letterDate}>
                 <DateInput className={errors.letterDate ? "error" : ""} value={form.letterDate} onChange={(v) => update("letterDate", v)} />
               </FormField>
               <FormField label="เลขรับ POST" error={errors.postNo} hint="ไม่บังคับ — ใส่ภายหลังได้">
-                <input className={`input mono ${errors.postNo ? "error" : ""}`} placeholder="เช่น POST-2569-0421" value={form.postNo} onChange={(e) => update("postNo", e.target.value)} />
+                <input className={`input mono ${errors.postNo ? "error" : ""}`} maxLength={MAX.postNo} placeholder="เช่น POST-2569-0421" value={form.postNo} onChange={(e) => update("postNo", e.target.value)} />
               </FormField>
               <FormField label="วันที่ลงรับ POST" error={errors.postDate}>
                 <DateInput className={errors.postDate ? "error" : ""} value={form.postDate} onChange={(v) => update("postDate", v)} />
@@ -182,7 +193,7 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
             </div>
             <div className="form-grid cols-2">
               <FormField label="ชื่อ-นามสกุล">
-                <input className="input" disabled={form.complainant.anonymous} placeholder="เช่น นายสมหมาย ใจดี"
+                <input className="input" disabled={form.complainant.anonymous} maxLength={MAX.name} placeholder="เช่น นายสมหมาย ใจดี"
                   value={form.complainant.anonymous ? "ไม่ระบุ/นิรนาม" : form.complainant.name} onChange={(e) => update("complainant.name", e.target.value)} />
               </FormField>
               <FormField label="ช่องทางการร้องเรียน" req error={errors.channel}>
@@ -192,19 +203,19 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
                 </select>
               </FormField>
               <FormField label="เลขที่หนังสือ" hint="เลขที่ของหนังสือต้นทาง — ไม่บังคับ">
-                <input className="input mono" placeholder="เช่น นบ 0032.2/345" value={form.docNo} onChange={(e) => update("docNo", e.target.value)} />
+                <input className="input mono" maxLength={MAX.docNo} placeholder="เช่น นบ 0032.2/345" value={form.docNo} onChange={(e) => update("docNo", e.target.value)} />
               </FormField>
               <FormField label="ลงวันที่" error={errors.docDate} warning={warnings.docDate} hint="วันที่ระบุบนหนังสือต้นทาง — ไม่บังคับ">
                 <DateInput className={errors.docDate ? "error" : ""} value={form.docDate} onChange={(v) => update("docDate", v)} />
               </FormField>
               <FormField label="เบอร์โทร">
-                <input className="input" placeholder="081-234-5678" value={form.complainant.phone} onChange={(e) => update("complainant.phone", e.target.value)} />
+                <input className="input" maxLength={MAX.phone} placeholder="081-234-5678" value={form.complainant.phone} onChange={(e) => update("complainant.phone", e.target.value)} />
               </FormField>
               <FormField label="Email">
-                <input type="email" className="input" placeholder="example@gmail.com" value={form.complainant.email} onChange={(e) => update("complainant.email", e.target.value)} />
+                <input type="email" className="input" maxLength={MAX.email} placeholder="example@gmail.com" value={form.complainant.email} onChange={(e) => update("complainant.email", e.target.value)} />
               </FormField>
               <FormField label="ที่อยู่ติดต่อ" full>
-                <textarea className="textarea" rows={2} placeholder="บ้านเลขที่ หมู่ ตำบล อำเภอ จังหวัด รหัสไปรษณีย์" value={form.complainant.address} onChange={(e) => update("complainant.address", e.target.value)} />
+                <textarea className="textarea" rows={2} maxLength={MAX.address} placeholder="บ้านเลขที่ หมู่ ตำบล อำเภอ จังหวัด รหัสไปรษณีย์" value={form.complainant.address} onChange={(e) => update("complainant.address", e.target.value)} />
               </FormField>
             </div>
           </div>
@@ -215,13 +226,13 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
           <div className="section-body">
             <div className="form-grid cols-2">
               <FormField label="ชื่อผู้รับอนุญาต" req error={errors.respondent && !form.respondent.licensee && !form.respondent.business ? errors.respondent : null}>
-                <input className={`input ${errors.respondent ? "error" : ""}`} placeholder="เช่น นายอนุชา สังข์ทอง" value={form.respondent.licensee} onChange={(e) => update("respondent.licensee", e.target.value)} />
+                <input className={`input ${errors.respondent ? "error" : ""}`} maxLength={MAX.licensee} placeholder="เช่น นายอนุชา สังข์ทอง" value={form.respondent.licensee} onChange={(e) => update("respondent.licensee", e.target.value)} />
               </FormField>
               <FormField label="ชื่อสถานประกอบการ" req>
-                <input className={`input ${errors.respondent ? "error" : ""}`} placeholder="เช่น ร้านยาดีใจเภสัช" value={form.respondent.business} onChange={(e) => update("respondent.business", e.target.value)} />
+                <input className={`input ${errors.respondent ? "error" : ""}`} maxLength={MAX.business} placeholder="เช่น ร้านยาดีใจเภสัช" value={form.respondent.business} onChange={(e) => update("respondent.business", e.target.value)} />
               </FormField>
               <FormField label="ที่อยู่" full>
-                <textarea className="textarea" rows={2} placeholder="ที่อยู่ของสถานประกอบการ" value={form.respondent.address} onChange={(e) => update("respondent.address", e.target.value)} />
+                <textarea className="textarea" rows={2} maxLength={MAX.address} placeholder="ที่อยู่ของสถานประกอบการ" value={form.respondent.address} onChange={(e) => update("respondent.address", e.target.value)} />
               </FormField>
               <FormField label="อำเภอ">
                 <select className="select" value={form.respondent.district}
@@ -238,7 +249,7 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
                 </select>
               </FormField>
               <FormField label="เลขที่ใบอนุญาต">
-                <input className="input mono" placeholder="เช่น ขย.1-นบ-0123" value={form.respondent.licenseNo} onChange={(e) => update("respondent.licenseNo", e.target.value)} />
+                <input className="input mono" maxLength={MAX.licenseNo} placeholder="เช่น ขย.1-นบ-0123" value={form.respondent.licenseNo} onChange={(e) => update("respondent.licenseNo", e.target.value)} />
               </FormField>
             </div>
           </div>
@@ -248,7 +259,7 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
           <div className="section-head"><div className="section-num">4</div><div><div className="section-title">รายละเอียดเรื่องร้องเรียน</div><div className="section-sub">หัวข้อหลักของเคส · พรบ. · ประเภทปัญหา</div></div></div>
           <div className="section-body stack">
             <FormField label="ชื่อกรณีร้องเรียน" req error={errors.title} hint={`${form.title.length}/200 ตัวอักษร · 5–200`}>
-              <input className={`input ${errors.title ? "error" : ""}`} placeholder="เช่น ร้านขายยาแผนปัจจุบันไม่มีเภสัชกรประจำ" value={form.title} onChange={(e) => update("title", e.target.value.slice(0, 200))} />
+              <input className={`input ${errors.title ? "error" : ""}`} maxLength={MAX.title} placeholder="เช่น ร้านขายยาแผนปัจจุบันไม่มีเภสัชกรประจำ" value={form.title} onChange={(e) => update("title", e.target.value.slice(0, 200))} />
             </FormField>
             <FormField label="พรบ. ที่เกี่ยวข้อง" req error={errors.laws}>
               <ChipPicker options={cms.MASTER.laws.map((l) => ({ id: l.id, label: l.label }))} value={form.laws} onChange={(v) => update("laws", v)} />
@@ -261,10 +272,10 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
             </FormField>
             <div className="form-grid cols-2">
               <FormField label="ผลิตภัณฑ์/บริการที่เกิดปัญหา">
-                <input className="input" placeholder="เช่น ยาแผนปัจจุบัน" value={form.product} onChange={(e) => update("product", e.target.value)} />
+                <input className="input" maxLength={MAX.product} placeholder="เช่น ยาแผนปัจจุบัน" value={form.product} onChange={(e) => update("product", e.target.value)} />
               </FormField>
               <FormField label="เลข อย./ทะเบียน/เลขที่จดแจ้ง">
-                <input className="input mono" placeholder="ถ้าไม่มี ใส่ —" value={form.productLicense} onChange={(e) => update("productLicense", e.target.value)} />
+                <input className="input mono" maxLength={MAX.productLicense} placeholder="ถ้าไม่มี ใส่ —" value={form.productLicense} onChange={(e) => update("productLicense", e.target.value)} />
               </FormField>
             </div>
             <FormField label="ประเภทปัญหา" req error={errors.problems}>
@@ -272,14 +283,14 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
             </FormField>
             {form.problems.some(isOtherProblem) && (
               <FormField label='ระบุปัญหา "อื่น ๆ"' req error={errors.problemOther}>
-                <input className={`input ${errors.problemOther ? "error" : ""}`} maxLength={191}
+                <input className={`input ${errors.problemOther ? "error" : ""}`} maxLength={MAX.problemOther}
                   placeholder="ระบุประเภทปัญหาที่ไม่มีในตัวเลือก"
                   value={form.problemOther} onChange={(e) => update("problemOther", e.target.value)} />
               </FormField>
             )}
             <div className="form-grid cols-2">
               <FormField label="สินบนนำจับ">
-                <input className="input" placeholder="เช่น 5,000 บาท / ตามประกาศฯ" value={form.bountyAmount} onChange={(e) => update("bountyAmount", e.target.value)} />
+                <input className="input" maxLength={MAX.bountyAmount} placeholder="เช่น 5,000 บาท / ตามประกาศฯ" value={form.bountyAmount} onChange={(e) => update("bountyAmount", e.target.value)} />
               </FormField>
             </div>
             {/* เลือกชัดเจนทั้งสองทาง — เดิมเป็น checkbox ตัวเดียว "ไม่ติ๊ก" จึงแยกไม่ออกว่าไม่ประสงค์รับ หรือยังไม่ได้ถาม */}
@@ -298,13 +309,13 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
             {form.bountyRequested && (
               <div className="form-grid cols-2">
                 <FormField label="ชื่อ (ผู้ประสงค์รับ)" req error={errors.bountyFirstName}>
-                  <input className={`input ${errors.bountyFirstName ? "error" : ""}`} placeholder="เช่น สมหมาย" value={form.bountyFirstName} onChange={(e) => update("bountyFirstName", e.target.value)} />
+                  <input className={`input ${errors.bountyFirstName ? "error" : ""}`} maxLength={MAX.bountyName} placeholder="เช่น สมหมาย" value={form.bountyFirstName} onChange={(e) => update("bountyFirstName", e.target.value)} />
                 </FormField>
                 <FormField label="นามสกุล (ผู้ประสงค์รับ)" req error={errors.bountyLastName}>
-                  <input className={`input ${errors.bountyLastName ? "error" : ""}`} placeholder="เช่น ใจดี" value={form.bountyLastName} onChange={(e) => update("bountyLastName", e.target.value)} />
+                  <input className={`input ${errors.bountyLastName ? "error" : ""}`} maxLength={MAX.bountyName} placeholder="เช่น ใจดี" value={form.bountyLastName} onChange={(e) => update("bountyLastName", e.target.value)} />
                 </FormField>
                 <FormField label="เลขสินบนนำจับ" full>
-                  <input className="input mono" placeholder="เช่น สนจ. 12/2569" value={form.bountyNo} onChange={(e) => update("bountyNo", e.target.value)} />
+                  <input className="input mono" maxLength={MAX.bountyNo} placeholder="เช่น สนจ. 12/2569" value={form.bountyNo} onChange={(e) => update("bountyNo", e.target.value)} />
                 </FormField>
               </div>
             )}

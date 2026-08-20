@@ -1,5 +1,6 @@
 // Assembles normalized case rows into the JSON shape the frontend expects,
 // and implements case creation + workflow transitions.
+const crypto = require("crypto");
 const pool = require("../db");
 const sla = require("./sla.service");
 const { SUPERVISOR_ROLES, ASSIGNABLE_ROLES, canWriteCase, WRITE_DENIED_MSG } = require("../auth/roles");
@@ -360,13 +361,39 @@ function validateCreate(p) {
   return errors;
 }
 
+// ของเดิม Math.random().toString(36).slice(2, 8) สุ่มได้แค่ ~6 ตัวอักษร (36^6 ≈ 2.2 พันล้าน)
+// ทดสอบสุ่ม 200,000 ครั้งชนกันจริง 10 ครั้ง — พอเคสสะสมหลักหมื่น การชนจะเริ่มเกิดในระบบจริง
+// และผู้ใช้จะเห็นข้อความผิด ๆ ว่า "เลข E-tracking ซ้ำ" ทั้งที่ไม่ได้กรอกช่องนั้นเลย
+// 8 ไบต์ = 64 บิต ยาว 21 ตัวอักษร (คอลัมน์ varchar(32) รับได้) และเป็น hex ตัวพิมพ์เล็ก
+// จึงไม่ชนกับ collation แบบ case-insensitive ของ MySQL
 function newCaseId() {
-  return "case-" + Math.random().toString(36).slice(2, 8);
+  return "case-" + crypto.randomBytes(8).toString("hex");
 }
 
 // Human-readable case reference for notifications — etracking is optional now
 function caseRef(c) {
   return c.etracking || c.title;
+}
+
+// พรบ. และประเภทปัญหาที่ resolve ไม่ได้เคยถูก INSERT IGNORE / if (pid) กลืนหายไปเงียบ ๆ
+// เคสจึงบันทึกสำเร็จโดยไม่มี พรบ. เลย ทั้งที่ validateCreate บังคับว่าต้องมีอย่างน้อย 1
+// (เกิดได้จริงเมื่อ master ถูกลบ/เปลี่ยนชื่อหลังผู้ใช้เปิดฟอร์มค้างไว้) — ต้องแจ้ง 400 แทน
+async function writeCaseLaws(conn, id, laws) {
+  await conn.query("DELETE FROM case_laws WHERE case_id=?", [id]);
+  for (const lawId of laws || []) {
+    const [rows] = await conn.query("SELECT id FROM laws WHERE id = ? LIMIT 1", [lawId]);
+    if (!rows.length) { const e = new Error(`ไม่รู้จัก พรบ. "${lawId}" — กรุณาเลือกใหม่จากรายการ`); e.status = 400; throw e; }
+    await conn.query("INSERT IGNORE INTO case_laws (case_id, law_id) VALUES (?, ?)", [id, lawId]);
+  }
+}
+
+async function writeCaseProblems(conn, id, problems) {
+  await conn.query("DELETE FROM case_problems WHERE case_id=?", [id]);
+  for (const name of problems || []) {
+    const pid = await idByName(conn, "problems", name);
+    if (!pid) { const e = new Error(`ไม่รู้จักประเภทปัญหา "${name}" — กรุณาเลือกใหม่จากรายการ`); e.status = 400; throw e; }
+    await conn.query("INSERT IGNORE INTO case_problems (case_id, problem_id) VALUES (?, ?)", [id, pid]);
+  }
 }
 
 async function fetchOr404(id) {
@@ -434,13 +461,8 @@ async function createCase(payload, user) {
       ]
     );
 
-    for (const lawId of payload.laws || []) {
-      await conn.query("INSERT IGNORE INTO case_laws (case_id, law_id) VALUES (?, ?)", [id, lawId]);
-    }
-    for (const name of payload.problems || []) {
-      const pid = await idByName(conn, "problems", name);
-      if (pid) await conn.query("INSERT IGNORE INTO case_problems (case_id, problem_id) VALUES (?, ?)", [id, pid]);
-    }
+    await writeCaseLaws(conn, id, payload.laws);
+    await writeCaseProblems(conn, id, payload.problems);
     // real files are uploaded separately via POST /cases/:id/attachments after creation
     if (isDraft) {
       // draft: visible only to the creator — heads are notified when it is submitted
@@ -990,10 +1012,8 @@ async function updateCase(id, rawPayload, user) {
         id,
       ]
     );
-    await conn.query("DELETE FROM case_laws WHERE case_id=?", [id]);
-    for (const lawId of payload.laws || []) await conn.query("INSERT IGNORE INTO case_laws (case_id, law_id) VALUES (?, ?)", [id, lawId]);
-    await conn.query("DELETE FROM case_problems WHERE case_id=?", [id]);
-    for (const name of payload.problems || []) { const pid = await idByName(conn, "problems", name); if (pid) await conn.query("INSERT IGNORE INTO case_problems (case_id, problem_id) VALUES (?, ?)", [id, pid]); }
+    await writeCaseLaws(conn, id, payload.laws);
+    await writeCaseProblems(conn, id, payload.problems);
     // attachments are managed via the dedicated upload/delete endpoints — do not touch here
 
     // editing no longer resubmits — the creator resubmits explicitly via POST /cases/:id/submit

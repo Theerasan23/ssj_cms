@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { useApp } from "@/context/AppContext";
+import { useApp, useToasts } from "@/context/AppContext";
 import * as SLA from "@/lib/sla";
 
 export const STATUS_ICONS = {
@@ -109,13 +109,38 @@ export function Modal({ open, onClose, title, sub, children, footer, size = "md"
   );
 }
 
+// ต้องตรงกับ cms-api attachments.service.js (ALLOWED_MIME / MAX_BYTES) และ multer fileFilter
+const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]);
+const MAX_BYTES = 20 * 1024 * 1024;
+const MAX_FILES = 10; // multer รับครั้งละไม่เกิน 10 ไฟล์ — เกินแล้วทั้งชุดจะไม่ถูกอัปโหลด
+
+const fmtSize = (bytes) => (bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1024 / 1024).toFixed(2)} MB`);
+
 export function FileUpload({ files = [], onChange, accept = "image/*,application/pdf" }) {
   const [drag, setDrag] = useState(false);
   const inputRef = useRef(null);
+  const toast = useToasts();
+  // คัดไฟล์ตั้งแต่ตอนเลือก — เดิมรับทุกชนิด/ทุกขนาด แล้วฝั่งเซิร์ฟเวอร์ทิ้งไฟล์ที่ไม่รองรับเงียบ ๆ
+  // (ตอบ 201 เหมือนสำเร็จ) ผู้ใช้จึงเข้าใจว่าแนบไฟล์แล้วทั้งที่ไฟล์หาย · การลากวางข้าม accept ได้ด้วย
   function add(list) {
-    const newFiles = Array.from(list).map((f) => ({
+    const rejected = [];
+    let accepted = Array.from(list).filter((f) => {
+      if (!ALLOWED_MIME.has(f.type)) { rejected.push(`${f.name} — ชนิดไฟล์ไม่รองรับ`); return false; }
+      if (f.size > MAX_BYTES) { rejected.push(`${f.name} — ใหญ่เกิน 20 MB (${fmtSize(f.size)})`); return false; }
+      return true;
+    });
+    const room = MAX_FILES - (files || []).length;
+    if (accepted.length > room) {
+      accepted.slice(room).forEach((f) => rejected.push(`${f.name} — เกิน ${MAX_FILES} ไฟล์ต่อครั้ง`));
+      accepted = accepted.slice(0, Math.max(0, room));
+    }
+    if (rejected.length) {
+      toast.push({ kind: "warn", title: "ไฟล์บางรายการแนบไม่ได้", msg: rejected.join(" · "), timeout: 6000 });
+    }
+    if (!accepted.length) return;
+    const newFiles = accepted.map((f) => ({
       name: f.name,
-      size: (f.size / 1024 / 1024).toFixed(2) + " MB",
+      size: fmtSize(f.size),
       type: f.type.startsWith("image") ? "image" : f.type === "application/pdf" ? "pdf" : "other",
       _file: f, // keep the real File so the form can upload it after the case is saved
     }));
@@ -130,7 +155,7 @@ export function FileUpload({ files = [], onChange, accept = "image/*,application
         onDrop={(e) => { e.preventDefault(); setDrag(false); add(e.dataTransfer.files); }}>
         <Icon className="upload-icon" name="upload" size={28} stroke={1.6} />
         <div className="upload-title">ลากไฟล์มาวาง หรือ คลิกเพื่อเลือก</div>
-        <div className="upload-hint">รองรับ PDF / JPG / PNG ขนาดไม่เกิน 20 MB ต่อไฟล์</div>
+        <div className="upload-hint">รองรับ PDF / JPG / PNG / WEBP / GIF · ไม่เกิน 20 MB ต่อไฟล์ · ครั้งละไม่เกิน {MAX_FILES} ไฟล์</div>
         <input ref={inputRef} type="file" multiple accept={accept} style={{ display: "none" }} onChange={(e) => add(e.target.files)} />
       </div>
       {files && files.length > 0 && (
@@ -342,6 +367,8 @@ export function DataCard({ title, icon, actions, children }) {
   );
 }
 
+// ผู้เรียกส่ง `color` มากับข้อมูลแต่ละชิ้นได้ เพื่อผูกสีกับตัวข้อมูลจริง (เช่น พรบ.) ไม่ใช่ลำดับที่วาด
+// — ลำดับเปลี่ยนเมื่อหมวดที่ไม่มีเคสถูกกรองออก สีจึงสลับกันเองถ้าอิงแค่ index
 const DONUT_COLORS = ["#1F4E79", "#2E74B5", "#E65100", "#2E7D32", "#6b3fa0", "#0e7c8a", "#F57F17", "#C62828", "#4a8fcc"];
 export function Donut({ data, size = 160 }) {
   const total = data.reduce((s, d) => s + d.count, 0) || 1;
@@ -357,7 +384,7 @@ export function Donut({ data, size = 160 }) {
           const dash = frac * c;
           const el = (
             <circle key={d.id} cx={size / 2} cy={size / 2} r={r} fill="none"
-              stroke={DONUT_COLORS[i % DONUT_COLORS.length]} strokeWidth="20"
+              stroke={d.color || DONUT_COLORS[i % DONUT_COLORS.length]} strokeWidth="20"
               strokeDasharray={`${dash} ${c - dash}`} strokeDashoffset={-off}
               transform={`rotate(-90 ${size / 2} ${size / 2})`} />
           );
@@ -370,7 +397,7 @@ export function Donut({ data, size = 160 }) {
       <div className="donut-legend">
         {data.map((d, i) => (
           <div key={d.id} className="legend-row">
-            <span className="legend-dot" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+            <span className="legend-dot" style={{ background: d.color || DONUT_COLORS[i % DONUT_COLORS.length] }} />
             <span className="legend-label">{d.label}</span>
             <span className="legend-value">{d.count}</span>
           </div>

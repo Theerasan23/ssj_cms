@@ -103,7 +103,7 @@ export function DecisionPathCard({ title = "เลือกแนวทางห
   const tip = (p) => disabledPaths.includes(p) ? "เคสอยู่ในขั้นตอนนี้อยู่แล้ว" : missing ? "กรุณาระบุเหตุผลก่อนเลือกแนวทาง" : undefined;
   const choose = (p) => onChoose(p, reason.trim());
   return (
-    <div className="card" style={{ background: "var(--accent-100)", borderColor: "var(--accent-600)" }}>
+    <div className="card" style={{ background: "var(--accent-100)" }}>
       <div className="card-body" style={{ padding: 16 }}>
         <div style={{ fontWeight: 700, fontSize: 14, color: "var(--accent-700)", marginBottom: 4 }}>{title}</div>
         <div className="small" style={{ marginBottom: 12, color: "var(--accent-700)" }}>{sub}</div>
@@ -284,7 +284,7 @@ export function FollowupModal({ c, onClose, onAdd, onCloseCase, onChoose }) {
             onChoose={onChoose} disabledPaths={["police"]} withReason requireReason />
         )}
 
-        <div className="card" style={{ background: "var(--accent-100)", borderColor: "var(--accent-600)" }}>
+        <div className="card" style={{ background: "var(--accent-100)" }}>
           <div className="card-body" style={{ padding: 16 }}>
             <div style={{ fontWeight: 700, fontSize: 14, color: "var(--accent-700)", marginBottom: 4 }}>สิ้นสุดการติดตาม</div>
             <div className="small" style={{ marginBottom: 12, color: "var(--accent-700)" }}>
@@ -530,7 +530,7 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply, onChoose }) {
         </div>
 
         {latest && latest.resolution && (
-          <div className="card" style={{ background: "var(--accent-100)", borderColor: "var(--accent-600)" }}>
+          <div className="card" style={{ background: "var(--accent-100)" }}>
             <div className="card-body" style={{ padding: 16 }}>
               <div style={{ fontWeight: 700, fontSize: 14, color: "var(--accent-700)", marginBottom: 4 }}>ดำเนินการตามมติล่าสุด</div>
               <div className="small" style={{ marginBottom: 12, color: "var(--accent-700)" }}>

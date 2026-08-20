@@ -34,9 +34,29 @@ app.use("/api/users", usersRoutes);
 // 404
 app.use((req, res) => res.status(404).json({ error: "ไม่พบ endpoint นี้" }));
 
+// ชื่อคอลัมน์ → ชื่อฟิลด์ที่ผู้ใช้เห็นบนฟอร์ม ใช้ตอนข้อมูลยาวเกินความกว้างคอลัมน์
+// (MySQL เปิด STRICT_TRANS_TABLES จึงโยน ER_DATA_TOO_LONG แทนที่จะตัดข้อความทิ้งเงียบ ๆ)
+const COLUMN_LABELS = {
+  etracking: "เลข E-tracking", letter_no: "เลขที่ลงรับ สสจ.", doc_no: "เลขที่หนังสือ", post_no: "เลขรับ POST",
+  title: "ชื่อกรณีร้องเรียน", product: "ชื่อผลิตภัณฑ์", product_license: "เลขที่ใบอนุญาตผลิตภัณฑ์",
+  problem_other: "ปัญหาอื่น ๆ (ระบุ)", bounty_amount: "สินบนนำจับ",
+  bounty_first_name: "ชื่อผู้ประสงค์รับสินบนนำจับ", bounty_last_name: "นามสกุลผู้ประสงค์รับสินบนนำจับ", bounty_no: "เลขสินบนนำจับ",
+  complainant_name: "ชื่อผู้ร้อง", complainant_phone: "เบอร์โทรผู้ร้อง", complainant_email: "อีเมลผู้ร้อง", complainant_address: "ที่อยู่ผู้ร้อง",
+  respondent_licensee: "ชื่อผู้รับอนุญาต", respondent_business: "ชื่อสถานประกอบการ",
+  respondent_address: "ที่อยู่ผู้ถูกร้อง", respondent_license_no: "เลขที่ใบอนุญาต",
+  cancel_reason: "เหตุผลการยกเลิก", return_reason: "เหตุผลที่ส่งกลับ",
+};
+
 // error handler
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  // ข้อมูลยาวเกินคอลัมน์ — เดิมหลุดเป็น 500 พร้อมข้อความ MySQL ภาษาอังกฤษดิบ ๆ
+  // ("Data too long for column 'complainant_address' at row 1") ผู้ใช้ไม่รู้ว่าช่องไหน
+  if (err && err.code === "ER_DATA_TOO_LONG") {
+    const col = (/column '(?:[^'.]+\.)?([^']+)'/.exec(err.message) || [])[1];
+    const label = COLUMN_LABELS[col] || col || "บางช่อง";
+    return res.status(400).json({ error: `ข้อความยาวเกินที่ระบบรับได้: ${label} — กรุณาย่อให้สั้นลง` });
+  }
   // multer upload errors → 400 with a friendly Thai message
   if (err && err.name === "MulterError") {
     const msg = err.code === "LIMIT_FILE_SIZE" ? "ไฟล์ใหญ่เกิน 20 MB"

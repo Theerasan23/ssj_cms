@@ -250,7 +250,9 @@ a { color: inherit; text-decoration: none; }
 .app-header .page-sub { font-size: 12.5px; color: var(--text-muted); }
 .app-header .spacer { flex: 1; }
 /* never wrap the header controls — the search shrinks and the title truncates instead */
-.app-header .row { flex-wrap: nowrap; min-width: 0; }
+/* flex-shrink: 0 สำคัญ — ไม่งั้นแถบปุ่มขวาถูกบีบให้แคบกว่าเนื้อหาจริง (97px จากที่ต้องการ 170px)
+   ส่วนที่ล้นดันความกว้างเอกสารจนทุกหน้าเลื่อนแนวนอนได้บนจอมือถือ ให้ชื่อหน้าย่อแทน */
+.app-header .row { flex-wrap: nowrap; min-width: 0; flex-shrink: 0; }
 .app-header .page-title, .app-header .page-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* header search — shrinks with the viewport; collapses to an icon on small screens */
@@ -399,6 +401,9 @@ a { color: inherit; text-decoration: none; }
   padding: 18px 22px;
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  /* หัวการ์ดที่มีปุ่ม/แท็บอยู่ทางขวา (เช่น แท็บใกล้ครบกำหนด/เกินเวลา) ล้นกรอบบนจอแคบ
+     ให้ตกบรรทัดแทนที่จะดันให้หน้าเลื่อนแนวนอน */
+  flex-wrap: wrap;
 }
 .card-header h2, .card-header h3 { margin: 0; font-size: 15.5px; font-weight: 700; letter-spacing: -0.005em; }
 .card-header .card-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
@@ -454,11 +459,12 @@ a { color: inherit; text-decoration: none; }
 .kpi-card.is-zero .kpi-value { color: var(--text-soft); }
 .kpi-card.is-zero .kpi-icon { background: var(--surface-2, var(--primary-50)); color: var(--text-soft); }
 /* Tone is carried entirely by the fill — the tint holds across the whole card instead of
-   fading out to plain surface, so the colour alone signals the state. */
-.kpi-card.accent  { background: linear-gradient(140deg, var(--accent-100) 0%, color-mix(in oklab, var(--accent-100) 52%, var(--surface)) 100%);  border-color: color-mix(in oklab, var(--accent-600) 30%, var(--border)); }
-.kpi-card.warn    { background: linear-gradient(140deg, var(--warning-100) 0%, color-mix(in oklab, var(--warning-100) 52%, var(--surface)) 100%); border-color: color-mix(in oklab, var(--warning-600) 28%, var(--border)); }
-.kpi-card.danger  { background: linear-gradient(140deg, var(--error-100) 0%, color-mix(in oklab, var(--error-100) 52%, var(--surface)) 100%);   border-color: color-mix(in oklab, var(--error-600) 28%, var(--border)); }
-.kpi-card.success { background: linear-gradient(140deg, var(--success-100) 0%, color-mix(in oklab, var(--success-100) 52%, var(--surface)) 100%); border-color: color-mix(in oklab, var(--success-600) 28%, var(--border)); }
+   fading out to plain surface, so the colour alone signals the state.
+   เส้นขอบเป็นสีกลาง (--border) เสมอทุกการ์ด ไม่ย้อมตามโทน */
+.kpi-card.accent  { background: linear-gradient(140deg, var(--accent-100) 0%, color-mix(in oklab, var(--accent-100) 52%, var(--surface)) 100%); }
+.kpi-card.warn    { background: linear-gradient(140deg, var(--warning-100) 0%, color-mix(in oklab, var(--warning-100) 52%, var(--surface)) 100%); }
+.kpi-card.danger  { background: linear-gradient(140deg, var(--error-100) 0%, color-mix(in oklab, var(--error-100) 52%, var(--surface)) 100%); }
+.kpi-card.success { background: linear-gradient(140deg, var(--success-100) 0%, color-mix(in oklab, var(--success-100) 52%, var(--surface)) 100%); }
 
 /* icon badge sits on the tinted fill, so it goes solid-on-white for contrast */
 .kpi-card.accent .kpi-value { color: var(--accent-700); }
@@ -505,7 +511,7 @@ a { color: inherit; text-decoration: none; }
 
 /* ---------------- Approval Queue (Head) ---------------- */
 .approval-card {
-  border: 1px solid color-mix(in oklab, var(--accent-600) 16%, var(--border));
+  border: 1px solid var(--border);
   background: linear-gradient(135deg, color-mix(in oklab, var(--accent-100) 55%, var(--surface)) 0%, var(--surface) 72%);
   border-radius: 12px;
   padding: 16px 18px;
@@ -515,11 +521,11 @@ a { color: inherit; text-decoration: none; }
   transition: border-color .15s, background .15s;
 }
 .approval-card:hover {
-  border-color: color-mix(in oklab, var(--accent-600) 32%, var(--border));
+  border-color: var(--border-strong);
   background: linear-gradient(135deg, color-mix(in oklab, var(--accent-100) 70%, var(--surface)) 0%, var(--surface) 78%);
 }
 .approval-card.is-locked {
-  border-color: color-mix(in oklab, var(--error-600) 24%, var(--border));
+  border-color: var(--border);
   background: linear-gradient(135deg, color-mix(in oklab, var(--error-100) 58%, var(--surface)) 0%, var(--surface) 72%);
 }
 .approval-card .ap-tracking {
@@ -968,7 +974,9 @@ table.data .actions-cell { text-align: right; }
 .donut-legend .legend-label { flex: 1; }
 .donut-legend .legend-value { font-weight: 700; font-variant-numeric: tabular-nums; }
 
-.heatmap-grid { display: grid; grid-template-columns: 80px repeat(12, 1fr); gap: 4px; font-size: 11px; }
+/* 13 คอลัมน์ไม่มีทางพอดีจอมือถือ — ให้เลื่อนอยู่ในกรอบของตัวเอง ไม่ใช่ดันทั้งหน้าให้เลื่อนแนวนอน */
+.heatmap-scroll { overflow-x: auto; }
+.heatmap-grid { display: grid; grid-template-columns: 80px repeat(12, minmax(28px, 1fr)); gap: 4px; font-size: 11px; min-width: 480px; }
 .heatmap-grid .h-label { color: var(--text-muted); padding: 4px 6px; text-align: right; }
 .heatmap-grid .h-cell {
   border-radius: 4px; height: 28px;
@@ -1045,7 +1053,13 @@ table.data .actions-cell { text-align: right; }
   z-index: 80;
   padding: 8px 6px env(safe-area-inset-bottom, 8px);
 }
-.mobile-tabbar .tabbar-inner { display: grid; grid-template-columns: repeat(5, 1fr); height: 100%; }
+/* minmax(0, 1fr) ไม่ใช่ 1fr เฉย ๆ — 1fr มีขนาดต่ำสุดเท่ากับ max-content ป้ายยาว ๆ จึงดันแทร็กให้กว้าง
+   จนหน้าเลื่อนแนวนอนบนจอ 375px (min-width ที่ตัวปุ่มแก้ไม่ได้ ต้องแก้ที่แทร็ก) */
+.mobile-tabbar .tabbar-inner { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); height: 100%; }
+/* ช่องกริดมี min-width: auto โดยปริยาย ป้ายยาว ๆ อย่าง "รายการขออนุมัติ" จึงดันคอลัมน์ให้กว้างเกิน
+   375px แล้วทั้งหน้าเลื่อนแนวนอนได้ — บังคับให้ย่อได้และตัดด้วย ellipsis แทน */
+.mobile-tabbar .tab-btn { min-width: 0; }
+.mobile-tabbar .tab-btn > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-tabbar .tab-btn {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 2px; background: transparent; border: none; color: var(--text-muted);
@@ -1070,6 +1084,8 @@ table.data .actions-cell { text-align: right; }
 .kv .k { color: var(--text-muted); }
 .kv .v { color: var(--text); font-weight: 500; }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+/* ตัวเลขนอกตารางก็ควรเรียงหลักตรงกัน — เดิม .num มีผลเฉพาะใน table.data */
+.num { font-variant-numeric: tabular-nums; }
 
 /* Page detail layout */
 .detail-grid-2col { display: grid; grid-template-columns: minmax(0, 360px) minmax(0, 1fr); gap: 20px; align-items: start; }

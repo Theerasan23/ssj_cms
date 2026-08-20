@@ -19,12 +19,14 @@ const NAV_ITEMS = [
   { key: "drafts", label: "เอกสารฉบับร่าง", icon: "file", href: "/drafts", match: "/drafts", roles: ["supply"] },
   { key: "committee", label: "คณะกรรมการ", icon: "users", href: "/committee", match: "/committee", roles: ["officer", ...SUPERVISOR_ROLES] },
   { key: "fines", label: "ค่าปรับ", icon: "coin", href: "/fines", match: "/fines", roles: ["officer", "fine", ...SUPERVISOR_ROLES] },
-  { key: "reports", label: "รายงาน · KPI", icon: "chart", href: "/reports", match: "/reports", roles: [...SUPERVISOR_ROLES, "exec"] },
+  // การ์ด KPI ทั้งหมดย้ายจากหน้าหลักมาอยู่ที่นี่ (หน้าหลักเหลือแค่ "เคสล่าสุด") เมนูนี้จึงต้องเปิดให้
+  // ทุกบทบาทที่เคยเห็นตัวเลขบนหน้าหลัก ไม่งั้นเจ้าหน้าที่จะไม่เหลือที่ดูงานค้าง/ผลงานของตัวเองเลย
+  { key: "reports", label: "รายงาน · KPI", icon: "chart", href: "/reports", match: "/reports", roles: ["supply", "officer", "fine", ...SUPERVISOR_ROLES, "exec"] },
   { key: "admin", label: "ตั้งค่า (Admin)", icon: "settings", href: "/admin", match: "/admin", roles: ["admin"] },
 ];
 
 function pageTitleFor(pathname) {
-  if (pathname.startsWith("/dashboard")) return { title: "ภาพรวมงานวันนี้", sub: "Dashboard · งานที่กำลังดำเนินการและเหลือเวลา" };
+  if (pathname.startsWith("/dashboard")) return { title: "หน้าหลัก", sub: "เคสล่าสุดที่เข้าระบบ · ตัวเลขสรุปทั้งหมดอยู่ที่รายงาน · KPI" };
   if (pathname === "/cases/new") return { title: "สร้างเคสร้องเรียน", sub: "บันทึกเรื่องร้องเรียนใหม่เข้าระบบ" };
   if (pathname.startsWith("/cases/")) return { title: "รายละเอียดเคส", sub: "ดำเนินการตามขั้นตอน workflow" };
   if (pathname.startsWith("/cases")) return { title: "เคสร้องเรียน", sub: "บริหารและติดตามทุกเคสในระบบ" };
@@ -32,7 +34,7 @@ function pageTitleFor(pathname) {
   if (pathname.startsWith("/documents")) return { title: "เอกสารทั้งหมด", sub: "เอกสารที่คุณบันทึกเข้าระบบ · ร่างและที่ส่งขออนุมัติแล้ว" };
   if (pathname.startsWith("/committee")) return { title: "คณะกรรมการ", sub: "เคสที่รอเข้าประชุมและประวัติมติ" };
   if (pathname.startsWith("/fines")) return { title: "ค่าปรับ", sub: "ติดตามรายการเปรียบเทียบปรับและการชำระ" };
-  if (pathname.startsWith("/reports")) return { title: "รายงาน · KPI", sub: "Dashboard ภาพรวมและการ Export ข้อมูล" };
+  if (pathname.startsWith("/reports")) return { title: "รายงาน · KPI", sub: "ตัวชี้วัด งานค้าง เคสใกล้เกินเวลา และผลการดำเนินงานรายบุคคล" };
   if (pathname.startsWith("/admin")) return { title: "ตั้งค่าระบบ", sub: "Master data, ผู้ใช้, สิทธิ์" };
   return { title: "", sub: "" };
 }
