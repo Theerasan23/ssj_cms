@@ -2,7 +2,7 @@
 // and implements case creation + workflow transitions.
 const pool = require("../db");
 const sla = require("./sla.service");
-const { SUPERVISOR_ROLES, canWriteCase, WRITE_DENIED_MSG } = require("../auth/roles");
+const { SUPERVISOR_ROLES, ASSIGNABLE_ROLES, canWriteCase, WRITE_DENIED_MSG } = require("../auth/roles");
 
 const CASE_SELECT = `
   SELECT c.*, s.name AS source_name, ch.name AS channel_name, d.name AS district_name, sd.name AS subdistrict_name, cu.name AS created_by_name
@@ -88,6 +88,7 @@ function buildShape(r, rel) {
     bountyFirstName: r.bounty_first_name || "",
     bountyLastName: r.bounty_last_name || "",
     bountyNo: r.bounty_no || "",
+    wantsFollowup: !!r.wants_followup,
     description: r.description || "",
     assignees: rel.assignees,
     assignedAt: r.assigned_at,
@@ -316,10 +317,14 @@ async function userIdsForRoles(conn, roles) {
 async function assertAssignableUsers(conn, userIds) {
   if (!userIds.length) { const e = new Error("กรุณาเลือกเจ้าหน้าที่อย่างน้อย 1 คน"); e.status = 400; throw e; }
   const ph = userIds.map(() => "?").join(",");
+  // หัวหน้า/รองหัวหน้ารับเคสเองได้ ไม่ใช่แค่ผู้มอบหมาย — รายชื่อที่รับได้อยู่ที่ ASSIGNABLE_ROLES
+  // และตรงกับที่ master.service ส่งให้ฟอร์ม ตัวเลือกที่เห็นบนหน้าจอจึงผ่านด่านนี้เสมอ
+  const rolePh = ASSIGNABLE_ROLES.map(() => "?").join(",");
   const [rows] = await conn.query(
-    `SELECT id, name FROM users WHERE id IN (${ph}) AND active = 1 AND role_id = 'officer'`, userIds);
+    `SELECT id, name FROM users WHERE id IN (${ph}) AND active = 1 AND role_id IN (${rolePh})`,
+    [...userIds, ...ASSIGNABLE_ROLES]);
   if (rows.length !== userIds.length) {
-    const e = new Error("มอบหมายได้เฉพาะบัญชีเจ้าหน้าที่ดำเนินการที่เปิดใช้งานเท่านั้น"); e.status = 400; throw e;
+    const e = new Error("มอบหมายได้เฉพาะบัญชีเจ้าหน้าที่ดำเนินการ หรือหัวหน้า/รองหัวหน้ากลุ่มงาน ที่เปิดใช้งานเท่านั้น"); e.status = 400; throw e;
   }
   return rows;
 }
@@ -404,11 +409,11 @@ async function createCase(payload, user) {
     await conn.query(
       `INSERT INTO cases (
         id, etracking, letter_no, letter_date, doc_no, doc_date, post_no, post_date, title,
-        source_id, product, product_license, problem_other, bounty_amount, bounty_requested, bounty_first_name, bounty_last_name, bounty_no, description, status_code,
+        source_id, product, product_license, problem_other, bounty_amount, bounty_requested, bounty_first_name, bounty_last_name, bounty_no, wants_followup, description, status_code,
         complainant_name, complainant_phone, complainant_email, complainant_address, complainant_anonymous, complainant_channel_id,
         respondent_licensee, respondent_business, respondent_address, respondent_license_no, respondent_district_id, respondent_subdistrict_id,
         is_draft, created_by, created_by_user_id, created_at
-      ) VALUES (?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?)`,
+      ) VALUES (?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?)`,
       [
         // letterNo/postNo/title are no longer guaranteed by validation — a draft may still
         // be blank. title is NOT NULL, so it falls back to "" rather than null.
@@ -419,6 +424,7 @@ async function createCase(payload, user) {
         String(payload.problemOther || "").trim() || null,
         payload.bountyAmount || null,
         payload.bountyRequested ? 1 : 0, payload.bountyFirstName || null, payload.bountyLastName || null, payload.bountyNo || null,
+        payload.wantsFollowup ? 1 : 0,
         payload.description || null, "01",
         payload.complainant?.name || null, payload.complainant?.phone || null, payload.complainant?.email || null,
         payload.complainant?.address || null, payload.complainant?.anonymous ? 1 : 0, channelId,
@@ -963,7 +969,7 @@ async function updateCase(id, rawPayload, user) {
     await conn.query(
       `UPDATE cases SET
         etracking=?, letter_no=?, letter_date=?, doc_no=?, doc_date=?, post_no=?, post_date=?, title=?,
-        source_id=?, product=?, product_license=?, problem_other=?, bounty_amount=?, bounty_requested=?, bounty_first_name=?, bounty_last_name=?, bounty_no=?, description=?,
+        source_id=?, product=?, product_license=?, problem_other=?, bounty_amount=?, bounty_requested=?, bounty_first_name=?, bounty_last_name=?, bounty_no=?, wants_followup=?, description=?,
         complainant_name=?, complainant_phone=?, complainant_email=?, complainant_address=?, complainant_anonymous=?, complainant_channel_id=?,
         respondent_licensee=?, respondent_business=?, respondent_address=?, respondent_license_no=?, respondent_district_id=?, respondent_subdistrict_id=?
        WHERE id=?`,
@@ -975,6 +981,7 @@ async function updateCase(id, rawPayload, user) {
         String(payload.problemOther || "").trim() || null,
         payload.bountyAmount || null,
         payload.bountyRequested ? 1 : 0, payload.bountyFirstName || null, payload.bountyLastName || null, payload.bountyNo || null,
+        payload.wantsFollowup ? 1 : 0,
         payload.description || null,
         payload.complainant?.name || null, payload.complainant?.phone || null, payload.complainant?.email || null,
         payload.complainant?.address || null, payload.complainant?.anonymous ? 1 : 0, channelId,
@@ -1078,6 +1085,25 @@ function splitList(v) {
   if (Array.isArray(v)) return v;
   return String(v).split(/[,;|]/).map((s) => s.trim()).filter(Boolean);
 }
+// "16" หรือ "16,18" → รายชื่อผู้รับผิดชอบ · โยน error ถ้ามี id ที่ใช้ไม่ได้ เพื่อให้แถวนั้น
+// ตกไปอยู่ในรายงาน "ล้มเหลว" พร้อมเหตุผล แทนที่จะนำเข้าเงียบ ๆ โดยไม่มีคนรับผิดชอบ
+async function resolveImportAssignees(conn, raw) {
+  const ids = [...new Set(splitList(raw).map((v) => Number(String(v).trim())))];
+  if (!ids.length) return [];
+  const bad = ids.filter((n) => !Number.isInteger(n) || n <= 0);
+  if (bad.length) throw new Error(`UserID เจ้าหน้าที่ต้องเป็นตัวเลข: "${splitList(raw).join(", ")}"`);
+  const ph = ids.map(() => "?").join(",");
+  const rolePh = ASSIGNABLE_ROLES.map(() => "?").join(",");
+  const [rows] = await conn.query(
+    `SELECT id, name FROM users WHERE id IN (${ph}) AND active = 1 AND role_id IN (${rolePh})`,
+    [...ids, ...ASSIGNABLE_ROLES]);
+  if (rows.length !== ids.length) {
+    const found = new Set(rows.map((r) => r.id));
+    throw new Error(`UserID ${ids.filter((n) => !found.has(n)).join(", ")} ไม่ใช่บัญชีเจ้าหน้าที่ดำเนินการ/หัวหน้า/รองหัวหน้า ที่เปิดใช้งาน`);
+  }
+  return rows;
+}
+
 function dateOrNull(v) {
   if (!v) return null;
   const s = String(v).slice(0, 10);
@@ -1136,8 +1162,19 @@ async function importCases(rows, user) {
         const pid = await idByName(conn, "problems", p);
         if (pid) await conn.query("INSERT IGNORE INTO case_problems (case_id, problem_id) VALUES (?, ?)", [id, pid]);
       }
+      const assignees = await resolveImportAssignees(conn, r.assigneeUserId);
+      for (const a of assignees) {
+        await conn.query("INSERT IGNORE INTO case_assignees (case_id, user_id) VALUES (?, ?)", [id, a.id]);
+      }
       await conn.query("INSERT INTO case_timeline (case_id, date, time, title, user_name, kind, status, seq) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
         [id, createdAt, "00:00", "นำเข้าจากไฟล์ Excel", user.name, "create", "in-time"]);
+      // assigned_at ตั้งใจปล่อยว่างไว้ — sla.service ถือว่าเคสที่ข้ามขั้นมอบหมายมา (status ≥ 02
+      // และไม่มี assigned_at) เป็นเคสที่ "วัด SLA ไม่ได้" ถ้าไปประทับวันที่ให้ ขั้นตรวจสอบจะเริ่ม
+      // นับจากวันนั้นทันที เคสเก่าที่นำเข้ามาจะกลายเป็นเกินกำหนดและถูกล็อกยกชุด
+      if (assignees.length) {
+        await conn.query("INSERT INTO case_timeline (case_id, date, time, title, user_name, kind, status, seq) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+          [id, createdAt, "00:00", `ผู้รับผิดชอบจากไฟล์นำเข้า: ${assignees.map((a) => a.name).join(", ")}`, user.name, "assign", "in-time"]);
+      }
       await conn.commit();
       result.created++;
     } catch (e) {

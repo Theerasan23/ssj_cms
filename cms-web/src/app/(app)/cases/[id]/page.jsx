@@ -397,6 +397,7 @@ export default function CaseDetailPage() {
             <div className="k">ผู้ประสงค์รับสินบน</div><div className="v">{[c.bountyFirstName, c.bountyLastName].filter(Boolean).join(" ") || "—"}</div>
             <div className="k">เลขสินบนนำจับ</div><div className="v mono">{c.bountyNo || "—"}</div>
           </>)}
+          <div className="k">ติดตาม/ตอบกลับ</div><div className="v">{c.wantsFollowup ? "ต้องการติดตาม/ตอบกลับเรื่องร้องเรียน" : "ไม่ได้ระบุ"}</div>
         </div>
         {c.description && <p style={{ marginTop: 12, color: "var(--text)", lineHeight: 1.7, fontSize: 13.5 }}>{c.description}</p>}
       </DataCard>
@@ -549,7 +550,10 @@ export default function CaseDetailPage() {
       <div className="v-timeline">
         {c.timeline.slice().reverse().map((t, i) => (
           <div key={i} className={`v-event ${t.kind === "close" ? "done" : ""}`}>
-            <div className="v-when">{cms.fmtThaiDate(t.date)} เวลา {t.time} น.</div>
+            {/* แสดงเฉพาะวันที่ — case_timeline.time เก็บเวลาตาม timezone ของ server (UTC บน
+                container) ไม่ใช่เวลาไทย และแถวที่นำเข้าจาก Excel เป็น "00:00" ล้วน เวลาที่โชว์จึง
+                ไม่ตรงความจริงและทำให้เข้าใจผิด คอลัมน์ยังเก็บไว้เหมือนเดิมเผื่อแก้ timezone ภายหลัง */}
+            <div className="v-when">{cms.fmtThaiDate(t.date)}</div>
             <div className="v-title">{t.title}</div>
             <div className="v-body">โดย {t.user}</div>
             {t.status && <div className="v-meta"><SLABadge sla={{ kind: t.status, label: t.status === "in-time" ? "ในเวลา" : t.status }} /></div>}

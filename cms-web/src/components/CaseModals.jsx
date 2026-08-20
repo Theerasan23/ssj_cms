@@ -9,21 +9,27 @@ import { useApp } from "@/context/AppContext";
 // ---------- Assign / Reassign ----------
 export function AssignModal({ c, onClose, onSave, mode = "assign" }) {
   const { cms } = useApp();
+  const roleLabel = (id) => cms.MASTER.roles?.find((r) => r.id === id)?.role || id;
   const reassign = mode === "reassign";
+  const hadOwner = (c.assignees || []).length > 0;
   const [selected, setSelected] = useState(reassign ? c.assignees || [] : []);
   const [note, setNote] = useState("");
   return (
-    <Modal open onClose={onClose} title={reassign ? "เปลี่ยน / มอบหมายเจ้าหน้าที่ใหม่" : "มอบหมายเจ้าหน้าที่"} sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
+    <Modal open onClose={onClose} title={reassign && hadOwner ? "เปลี่ยน / มอบหมายเจ้าหน้าที่ใหม่" : "มอบหมายเจ้าหน้าที่"} sub={[c.etracking, c.title].filter(Boolean).join(" · ")}
       footer={<>
         <button className="btn btn-outline" onClick={onClose}>ยกเลิก</button>
         <button className="btn btn-primary" disabled={selected.length === 0} onClick={() => onSave(selected, note)}>
-          <Icon name="check" size={14} /> {reassign ? "บันทึกการมอบหมายใหม่" : "บันทึกการมอบหมาย"}
+          <Icon name="check" size={14} /> {reassign && hadOwner ? "บันทึกการมอบหมายใหม่" : "บันทึกการมอบหมาย"}
         </button>
       </>}>
       <div className="stack">
-        {reassign ? (
+        {reassign && hadOwner ? (
           <div style={{ padding: 12, background: "var(--warning-100)", borderRadius: 8, fontSize: 12.5, color: "var(--warning-700)" }}>
-            รายชื่อที่บันทึกจะ<strong>แทนที่ผู้รับผิดชอบชุดเดิม</strong> ({c.assignees.map((id) => cms.officerName(id)).join(", ") || "—"}) · สถานะเคสไม่เปลี่ยน
+            รายชื่อที่บันทึกจะ<strong>แทนที่ผู้รับผิดชอบชุดเดิม</strong> ({c.assignees.map((id) => cms.officerName(id)).join(", ")}) · สถานะเคสไม่เปลี่ยน
+          </div>
+        ) : reassign ? (
+          <div style={{ padding: 12, background: "var(--warning-100)", borderRadius: 8, fontSize: 12.5, color: "var(--warning-700)" }}>
+            เคสนี้<strong>ยังไม่มีผู้รับผิดชอบ</strong> — เลือกเจ้าหน้าที่เพื่อมอบหมาย · สถานะเคสไม่เปลี่ยน
           </div>
         ) : (
           <div style={{ padding: 12, background: "var(--primary-50)", borderRadius: 8, fontSize: 12.5 }}>
@@ -31,8 +37,8 @@ export function AssignModal({ c, onClose, onSave, mode = "assign" }) {
           </div>
         )}
         <FormField label="เลือกเจ้าหน้าที่ดำเนินการ" req>
-          <ChipPicker options={cms.MASTER.officers.map((o) => ({ id: o.id, label: o.name }))} value={selected} onChange={setSelected} />
-          <span className="hint">แสดงเฉพาะบัญชีบทบาท "เจ้าหน้าที่ดำเนินการ" ที่เปิดใช้งาน · เลือกได้มากกว่า 1 คน — ผู้ถูกเลือกจะได้รับ notification และเข้าสู่ระบบเพื่อดำเนินการขั้นถัดไป</span>
+          <ChipPicker options={cms.MASTER.officers.map((o) => ({ id: o.id, label: o.role && o.role !== "officer" ? `${o.name} (${roleLabel(o.role)})` : o.name }))} value={selected} onChange={setSelected} />
+          <span className="hint">บัญชีที่เปิดใช้งานของ "เจ้าหน้าที่ดำเนินการ" และ "หัวหน้า/รองหัวหน้ากลุ่มงาน" (รับเคสเองได้) · เลือกได้มากกว่า 1 คน — ผู้ถูกเลือกจะได้รับ notification และเข้าสู่ระบบเพื่อดำเนินการขั้นถัดไป</span>
         </FormField>
         <FormField label="หมายเหตุ">
           <textarea className="textarea" rows={3} placeholder={reassign ? "เหตุผลการเปลี่ยนเจ้าหน้าที่ (ถ้ามี)" : "ข้อความถึงผู้รับมอบหมาย (ถ้ามี)"} value={note} onChange={(e) => setNote(e.target.value)} />

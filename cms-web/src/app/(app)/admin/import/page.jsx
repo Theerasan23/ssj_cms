@@ -12,6 +12,8 @@ const SHEETJS_SRC = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.
 
 const STATUS_CODES = ["01", "02", "03", "04", "05", "06", "07", "08"];
 const SLA_ACTIVE_STATUSES = ["01", "02", "03", "04"]; // สถานะที่ยังนับ SLA (05–08 = ปิด/ติดตามผล)
+// สถานะที่เคส "กำลังเดินอยู่" — ต้องมีเจ้าหน้าที่ผู้รับผิดชอบ ไม่งั้นไม่มีใครทำต่อ
+const NEEDS_ASSIGNEE_STATUSES = ["02", "03", "04"];
 const DATE_FIELDS = ["letterDate", "postDate", "createdAt"];
 
 // Columns the importer understands (header row must use these keys).
@@ -19,6 +21,7 @@ const COLUMNS = [
   { key: "etracking", label: "E-tracking (ไม่บังคับ)" },
   { key: "title", label: "ชื่อเคส (≥5 ตัวอักษร)", req: true },
   { key: "status", label: "สถานะ 01–08 (ว่าง = 01)" },
+  { key: "assigneeUserId", label: "UserID เจ้าหน้าที่ผู้รับผิดชอบ (หลายคนคั่นด้วย , — ดู UserID ได้ที่ตาราง \"ผู้ใช้และสิทธิ์\")" },
   { key: "laws", label: "พรบ. (รหัสหรือชื่อ คั่นด้วย , เช่น drug,อาหาร)" },
   { key: "source", label: "ที่มา" },
   { key: "problems", label: "ประเภทปัญหา (คั่นด้วย ,)" },
@@ -107,6 +110,19 @@ function validateRow(r, ctx) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) warns.push({ field: f, msg: `${FIELD_LABEL[f]} "${v}" ไม่ใช่รูปแบบ YYYY-MM-DD จะถูกเว้นว่าง` });
     else if (Number(v.slice(0, 4)) > 2200) warns.push({ field: f, msg: `${FIELD_LABEL[f]} ปี ${v.slice(0, 4)} อาจเป็น พ.ศ. (ต้องเป็น ค.ศ.)` });
   }
+  const assignIds = splitList(r.assigneeUserId);
+  const effStatus = STATUS_CODES.includes(r.status) ? r.status : "01";
+  for (const raw of assignIds) {
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n <= 0) errors.push({ field: "assigneeUserId", msg: `UserID "${raw}" ต้องเป็นตัวเลข` });
+    else if (!ctx.officerIds.has(n)) errors.push({ field: "assigneeUserId", msg: `UserID ${n} ไม่ใช่บัญชีเจ้าหน้าที่/หัวหน้า/รองหัวหน้า ที่เปิดใช้งาน` });
+  }
+  if (assignIds.length === 0 && NEEDS_ASSIGNEE_STATUSES.includes(effStatus)) {
+    warns.push({ field: "assigneeUserId", msg: `สถานะ ${effStatus} แต่ไม่ระบุผู้รับผิดชอบ — เคสจะไปอยู่ในแท็บ "ยังไม่มีผู้รับผิดชอบ" ของหน้ารายการขออนุมัติ` });
+  }
+  if (assignIds.length > 0 && effStatus === "01") {
+    warns.push({ field: "assigneeUserId", msg: "สถานะ 01 = รอมอบหมาย — ระบบจะบันทึกผู้รับผิดชอบให้ แต่เคสยังเข้าคิวรออนุมัติอยู่" });
+  }
   for (const t of r.laws || []) {
     if (!ctx.lawIds.has(t)) warns.push({ field: "laws", msg: `พรบ. "${t}" ไม่พบในระบบ จะถูกละ` });
   }
@@ -175,6 +191,9 @@ export default function ImportPage() {
     return {
       fileCount, dbDup,
       lawIds: new Set((master?.laws || []).map((l) => l.id)),
+      // master.officers = บัญชีที่รับมอบหมายเคสได้ (เจ้าหน้าที่ดำเนินการ + หัวหน้า/รองหัวหน้า)
+      officerIds: new Set((master?.officers || []).map((o) => o.id)),
+      officerById: new Map((master?.officers || []).map((o) => [o.id, o])),
       problems: new Set(master?.problems || []),
       sources: new Set(master?.sources || []),
       channels: new Set(master?.channels || []),
@@ -214,7 +233,7 @@ export default function ImportPage() {
       complainant_name: "นายตัวอย่าง ใจดี", complainant_phone: "081-000-0000",
       respondent_business: "ร้านตัวอย่าง", district: "เมืองนนทบุรี",
       letterNo: "นบ 0032.2/000", letterDate: "2023-01-15", postNo: "POST-000", postDate: "2023-01-16",
-      createdAt: "2023-01-16",
+      createdAt: "2023-01-16", assigneeUserId: "",
     });
     const ws = window.XLSX.utils.json_to_sheet([example], { header: COLUMNS.map((c) => c.key) });
     const wb = window.XLSX.utils.book_new();
@@ -243,6 +262,7 @@ export default function ImportPage() {
         status: /^[1-8]$/.test(r.status) ? `0${r.status}` : r.status,
         laws: splitList(r.laws).map((t) => lawMaps.get(t.toLowerCase()) || lawMaps.get(t.replace(/\s+/g, "")) || t),
         problems: splitList(r.problems),
+        assigneeUserId: splitList(r.assigneeUserId).map((v) => String(v).trim()),
       }));
       setFileName(file.name);
       setRows(normalized);
@@ -362,6 +382,34 @@ export default function ImportPage() {
             <div className="small muted">* = จำเป็น · วันที่ใช้รูปแบบ ค.ศ. (YYYY-MM-DD) · laws ใช้รหัสหรือชื่อ พรบ. (เช่น drug หรือ ยา)</div>
           </div>
         </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3>UserID เจ้าหน้าที่</h3>
+              <div className="card-sub">ใส่ตัวเลขนี้ในคอลัมน์ <span className="mono">assigneeUserId</span> · หลายคนคั่นด้วย ,</div>
+            </div>
+          </div>
+          <div className="card-body">
+            {(master?.officers || []).length === 0 ? (
+              <div className="small muted">ยังไม่มีบัญชีที่รับมอบหมายเคสได้ — เพิ่มผู้ใช้ที่ ตั้งค่า → ผู้ใช้และสิทธิ์</div>
+            ) : (
+              <div className="stack-sm">
+                {(master?.officers || []).map((o) => (
+                  <div key={o.id} className="row between" style={{ fontSize: 12.5 }}>
+                    <span className="mono" style={{ color: "var(--primary-700)" }}>{o.id}</span>
+                    <span className="muted" style={{ textAlign: "right", maxWidth: 210 }}>
+                      {o.name}
+                      {o.role && o.role !== "officer" && ` (${(master?.roles || []).find((r) => r.id === o.role)?.role || o.role})`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="hr" />
+            <div className="small muted">เคสสถานะ 02–04 ที่ไม่ระบุผู้รับผิดชอบ จะไปรวมอยู่ในแท็บ "ยังไม่มีผู้รับผิดชอบ" ของหน้ารายการขออนุมัติ</div>
+          </div>
+        </div>
       </div>
 
       {rows && rows.length > 0 && (
@@ -397,7 +445,7 @@ export default function ImportPage() {
                 <thead>
                   <tr>
                     <th>แถว</th><th>ผลตรวจ</th><th>E-tracking</th><th>ชื่อเคส</th><th>สถานะ</th>
-                    <th>พรบ.</th><th>อำเภอ</th><th>รายละเอียดที่ต้องแก้</th><th style={{ width: 120 }}></th>
+                    <th>ผู้รับผิดชอบ</th><th>พรบ.</th><th>อำเภอ</th><th>รายละเอียดที่ต้องแก้</th><th style={{ width: 120 }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -413,6 +461,11 @@ export default function ImportPage() {
                         <td className="num">{r.etracking || "—"}</td>
                         <td style={{ maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</td>
                         <td>{r.status || "01"}</td>
+                        <td className="small">
+                          {(r.assigneeUserId || []).length === 0
+                            ? <span className="muted">—</span>
+                            : (r.assigneeUserId || []).map((v) => ctx.officerById.get(Number(v))?.name || `#${v}`).join(", ")}
+                        </td>
                         <td className="small">{(r.laws || []).map((t) => cms.lawLabel(t)).join(", ")}</td>
                         <td className="small">{r.district}</td>
                         <td className="small" style={{ maxWidth: 300, color: it.state === "error" ? "var(--error-700)" : "var(--warning-700)" }}>
@@ -527,6 +580,16 @@ function EditRowModal({ row, ctx, master, cms, onClose, onDelete, onSave }) {
     return opts;
   }, [master, d.laws]);
 
+  // ค่าที่เก็บเป็น string เสมอ (ChipPicker เทียบด้วย ===) — id ที่ไม่รู้จักยังโชว์เป็นชิปให้เห็นว่าผิด
+  const officerOptions = useMemo(() => {
+    const opts = (master?.officers || []).map((o) => ({
+      id: String(o.id),
+      label: `${o.id} · ${o.name}${o.role && o.role !== "officer" ? ` (${(master?.roles || []).find((r) => r.id === o.role)?.role || o.role})` : ""}`,
+    }));
+    (d.assigneeUserId || []).forEach((v) => { if (!opts.some((o) => o.id === String(v))) opts.push({ id: String(v), label: `${v} (ไม่พบ)` }); });
+    return opts;
+  }, [master, d.assigneeUserId]);
+
   const problemOptions = useMemo(() => {
     const opts = [...(master?.problems || [])];
     (d.problems || []).forEach((t) => { if (!opts.includes(t)) opts.push(t); });
@@ -569,6 +632,10 @@ function EditRowModal({ row, ctx, master, cms, onClose, onDelete, onSave }) {
             {d.status && !STATUS_CODES.includes(d.status) && <option value={d.status}>{d.status} (ไม่ถูกต้อง)</option>}
             {STATUS_CODES.map((c) => <option key={c} value={c}>{c} — {cms.STATUS[c]?.label || ""}</option>)}
           </select>
+        </FormField>
+        <FormField label={FIELD_LABEL.assigneeUserId} error={err("assigneeUserId")} warning={warn("assigneeUserId")} full>
+          <ChipPicker options={officerOptions} value={(d.assigneeUserId || []).map(String)} onChange={set("assigneeUserId")} />
+          <span className="hint">เลือกได้มากกว่า 1 คน · เว้นว่างได้ถ้ายังไม่มีผู้รับผิดชอบ</span>
         </FormField>
         <FormField label="ชื่อเคส" req error={err("title")} full>
           <input className={`input ${err("title") ? "error" : ""}`} value={d.title || ""} onChange={set("title")} />

@@ -6,6 +6,11 @@ const HEAD_ROLES = ["head", "deputy"];
 // Roles that oversee the whole workflow: approve, assign, cancel, extend SLA, unlock.
 const SUPERVISOR_ROLES = [...HEAD_ROLES, "admin"];
 
+// บทบาทที่ "รับมอบหมายเคส" ได้ — หัวหน้า/รองหัวหน้าลงมือทำเคสเองได้ ไม่ได้มีแค่สั่งการ
+// จึงต้องปรากฏในรายชื่อตอนมอบหมายเช่นเดียวกับเจ้าหน้าที่ดำเนินการ
+// (admin ไม่รวม — เป็นบัญชีดูแลระบบ ไม่ใช่ผู้ปฏิบัติงานในสายงาน)
+const ASSIGNABLE_ROLES = ["officer", ...HEAD_ROLES];
+
 const isSupervisor = (roleId) => SUPERVISOR_ROLES.includes(roleId);
 
 // ทุกบทบาท "เปิดดู" เคสได้ทั้งหมด — สิทธิ์ที่คุมคือการ "แก้ไข/ดำเนินการ" เท่านั้น
@@ -26,4 +31,4 @@ function canWriteCase(c, user) {
 
 const WRITE_DENIED_MSG = "แก้ไขได้เฉพาะเจ้าหน้าที่ที่ได้รับมอบหมาย หัวหน้า/รองหัวหน้ากลุ่มงาน หรือแอดมิน (ผู้สร้างเคสแก้ได้ก่อนถูกมอบหมาย · เจ้าหน้าที่ค่าปรับแก้ได้เฉพาะขั้นชำระค่าปรับ)";
 
-module.exports = { HEAD_ROLES, SUPERVISOR_ROLES, isSupervisor, canWriteCase, WRITE_DENIED_MSG };
+module.exports = { HEAD_ROLES, SUPERVISOR_ROLES, ASSIGNABLE_ROLES, isSupervisor, canWriteCase, WRITE_DENIED_MSG };

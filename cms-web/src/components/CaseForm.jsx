@@ -18,6 +18,7 @@ export function blankCaseForm(todayIso) {
     respondent: { licensee: "", business: "", address: "", district: "", subdistrict: "", licenseNo: "" },
     title: "", laws: [], source: "", product: "", productLicense: "", problems: [], problemOther: "",
     bountyAmount: "", bountyRequested: false, bountyFirstName: "", bountyLastName: "", bountyNo: "",
+    wantsFollowup: false,
     description: "", attachments: [],
   };
 }
@@ -35,6 +36,7 @@ export function caseToForm(c) {
     // upload zone is only for adding NEW files, so start it empty when editing.
     bountyAmount: c.bountyAmount != null ? String(c.bountyAmount) : "",
     bountyRequested: !!c.bountyRequested, bountyFirstName: c.bountyFirstName || "", bountyLastName: c.bountyLastName || "", bountyNo: c.bountyNo || "",
+    wantsFollowup: !!c.wantsFollowup,
     description: c.description || "", attachments: [],
   };
 }
@@ -116,6 +118,7 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
         bountyFirstName: form.bountyRequested ? form.bountyFirstName : null,
         bountyLastName: form.bountyRequested ? form.bountyLastName : null,
         bountyNo: form.bountyRequested ? form.bountyNo : null,
+        wantsFollowup: form.wantsFollowup,
         description: form.description, attachments: form.attachments,
       });
     } catch (err) {
@@ -305,6 +308,12 @@ export function CaseForm({ initial, submitLabel, headerTitle, headerSub, banner,
                 </FormField>
               </div>
             )}
+            <div className="row">
+              <label className="checkbox">
+                <input type="checkbox" checked={form.wantsFollowup} onChange={(e) => update("wantsFollowup", e.target.checked)} />
+                ต้องการติดตาม/ตอบกลับเรื่องร้องเรียน
+              </label>
+            </div>
             <FormField label="รายละเอียดเพิ่มเติม" hint="อธิบายข้อเท็จจริงและสิ่งที่ผู้ร้องเรียนต้องการ">
               <textarea className="textarea" rows={4} placeholder="รายละเอียดของเรื่องร้องเรียน..." value={form.description} onChange={(e) => update("description", e.target.value)} />
             </FormField>

@@ -50,6 +50,15 @@ export default function ApprovalsPage() {
   const approved = submittedByOfficer
     .filter((c) => c.assignedAt && c.status !== "01")
     .sort((a, b) => (b.assignedAt || "").localeCompare(a.assignedAt || ""));
+  // "ยังไม่มีผู้รับผิดชอบ" = ไม่มีชื่อเจ้าหน้าที่ใน c.assignees เลย ไม่ว่าสถานะใด
+  // เคสนำเข้า (import) มักข้ามขั้นมอบหมายมาอยู่สถานะ 02+ โดยไม่มี assignedAt จึงไม่โผล่ใน
+  // แท็บ "รออนุมัติ" (กรองสถานะ 01) และไม่โผล่ใน "อนุมัติแล้ว" (กรอง assignedAt) — ตกหล่นทั้งสองทาง
+  const noOwner = submittedByOfficer.filter((c) => c.assignees.length === 0);
+  const unassigned = noOwner
+    .filter((c) => !c.closed)
+    .sort((a, b) => (a.postDate || a.createdAt || "").localeCompare(b.postDate || b.createdAt || ""));
+  // ปิด/ยกเลิกไปแล้วก็ไม่ต้องหาคนรับผิดชอบ — นับแยกไว้บอกเฉย ๆ ไม่ปนในรายการที่ต้องจัดการ
+  const unassignedClosed = noOwner.filter((c) => c.closed);
 
   async function doReturn() {
     if (!returnReason.trim()) { toast.push({ kind: "warn", title: "กรุณาระบุเหตุผล" }); return; }
@@ -132,6 +141,19 @@ export default function ApprovalsPage() {
           <div className="kpi-trend down"><Icon name="ban" size={14} /> ห้ามมอบหมาย</div>
           <div className="kpi-icon"><Icon name="lock" size={18} /></div>
         </div>
+        <div className={`kpi-card is-link ${unassigned.length > 0 ? "warn" : "is-zero"}`}
+          role="button" tabIndex={0} title="ดูรายการเคสที่ยังไม่มีผู้รับผิดชอบ"
+          onClick={() => setTab("unassigned")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTab("unassigned"); } }}>
+          <div className="kpi-label"><Icon name="user" size={14} /> ยังไม่มีผู้รับผิดชอบ</div>
+          <div className="kpi-value">{unassigned.length}</div>
+          <div className={`kpi-trend${unassigned.length > 0 ? " down" : ""}`}>
+            {unassigned.length > 0
+              ? <><Icon name="alert" size={14} /> ไม่มีเจ้าหน้าที่รับมอบ — ต้องมอบหมาย</>
+              : <><Icon name="check-circle" size={14} /> ทุกเคสที่เปิดอยู่มีผู้รับผิดชอบแล้ว</>}
+          </div>
+          <div className="kpi-icon"><Icon name="user" size={18} /></div>
+        </div>
         <div className="kpi-card success">
           <div className="kpi-label"><Icon name="check-circle" size={14} /> อนุมัติแล้ว</div>
           <div className="kpi-value">{approved.length}</div>
@@ -145,6 +167,7 @@ export default function ApprovalsPage() {
           <Tabs value={tab} onChange={setTab} tabs={[
             { value: "pending", label: "รออนุมัติ", icon: "hand", count: pendingLive.length },
             { value: "returned", label: "ตีกลับแล้ว", icon: "arrow-left", count: returnedList.length },
+            { value: "unassigned", label: "ยังไม่มีผู้รับผิดชอบ", icon: "user", count: unassigned.length },
             { value: "approved", label: "อนุมัติแล้ว", icon: "check-circle", count: approved.length },
             { value: "overdue", label: "เกิน SLA", icon: "lock", count: pendingLocked.length },
           ]} />
@@ -221,6 +244,58 @@ export default function ApprovalsPage() {
                 {returnedList.length === 0 && <tr><td colSpan="5"><div className="table-empty"><div className="empty-icon"><Icon name="arrow-left" size={24} /></div>ไม่มีเคสที่ตีกลับ</div></td></tr>}
               </tbody>
             </table>
+          </div>
+        ) : tab === "unassigned" ? (
+          <div className="table-wrap">
+            <table className="data">
+              <thead><tr><th>E-tracking</th><th>ชื่อเคส</th><th>สถานะ</th><th>ลงรับ POST</th><th>SLA</th><th>จัดการ</th><th></th></tr></thead>
+              <tbody>
+                {unassigned.map((c) => {
+                  const locked = cms.isCaseLocked(c);
+                  // มอบหมายครั้งแรกใช้ /assign (รับเฉพาะสถานะ 01) · เคสที่เดินเลยขั้นอนุมัติไปแล้ว
+                  // ต้องใช้ /reassign ซึ่งรับเฉพาะ 02–04 — สถานะอื่นยังไม่มี endpoint ให้ใส่ชื่อคน
+                  const canAssign = c.status === "01";
+                  const canReassign = ["02", "03", "04"].includes(c.status);
+                  return (
+                    <tr key={c.id} onClick={() => router.push(`/cases/${c.id}`)}>
+                      <td className="num">{c.etracking || "—"}</td>
+                      <td style={{ fontWeight: 500, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</td>
+                      <td><StatusBadge code={c.status} /></td>
+                      <td className="muted small">{c.postDate ? cms.fmtThaiDate(c.postDate) : <span title="ยังไม่ได้ลงรับ POST — SLA ขั้นมอบหมายจึงยังไม่เริ่มนับ">— ยังไม่ลงรับ</span>}</td>
+                      <td>{locked ? <span className="lock-pill"><Icon name="lock" size={10} /> ล็อก</span> : <SLABadge sla={cms.caseSla(c)} />}</td>
+                      <td>
+                        {locked ? (
+                          <span className="muted small">ปลดล็อก/ขยายกำหนดก่อน</span>
+                        ) : canAssign ? (
+                          <button className="btn btn-accent btn-sm" onClick={(e) => { e.stopPropagation(); setAssignFor(c.id); }}>
+                            <Icon name="approve" size={13} /> อนุมัติ &amp; มอบหมาย
+                          </button>
+                        ) : canReassign ? (
+                          <button className="btn btn-outline btn-sm" onClick={(e) => { e.stopPropagation(); setReassignFor(c.id); }}>
+                            <Icon name="users" size={13} /> มอบหมายเจ้าหน้าที่
+                          </button>
+                        ) : (
+                          <span className="muted small" title="สถานะนี้ไม่มีขั้นตอนมอบหมายในระบบ">—</span>
+                        )}
+                      </td>
+                      <td><Icon name="chevron-right" size={16} style={{ color: "var(--text-muted)" }} /></td>
+                    </tr>
+                  );
+                })}
+                {unassigned.length === 0 && (
+                  <tr><td colSpan="7"><div className="table-empty">
+                    <div className="empty-icon" style={{ background: "var(--success-100)", color: "var(--success-700)" }}><Icon name="check-circle" size={24} /></div>
+                    <div style={{ fontWeight: 600 }}>ทุกเคสที่เปิดอยู่มีผู้รับผิดชอบแล้ว</div>
+                    <div className="small muted">เคสที่ไม่มีชื่อเจ้าหน้าที่รับมอบจะมาปรากฏที่นี่</div>
+                  </div></td></tr>
+                )}
+              </tbody>
+            </table>
+            {unassignedClosed.length > 0 && (
+              <div className="small muted" style={{ padding: "10px 14px", borderTop: "1px solid var(--border)" }}>
+                <Icon name="info" size={12} /> ไม่นับเคสที่ปิด/ยกเลิกไปแล้วอีก {unassignedClosed.length} เคสที่ไม่มีผู้รับผิดชอบ — ไม่ต้องมอบหมายแล้ว
+              </div>
+            )}
           </div>
         ) : tab === "approved" ? (
           <div className="table-wrap">

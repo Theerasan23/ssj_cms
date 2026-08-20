@@ -171,6 +171,8 @@ CREATE TABLE cases (
   bounty_first_name    VARCHAR(128),
   bounty_last_name     VARCHAR(128),
   bounty_no            VARCHAR(128),
+  -- ผู้ร้องเรียนแจ้งว่าต้องการให้ติดตาม/แจ้งผลกลับเรื่องร้องเรียน — ถามคู่กับสินบนนำจับบนฟอร์มสร้างเคส
+  wants_followup       TINYINT(1) NOT NULL DEFAULT 0,
   description          TEXT,
   status_code          VARCHAR(2) NOT NULL DEFAULT '01',
 
@@ -250,7 +252,8 @@ CREATE TABLE case_problems (
   CONSTRAINT fk_cp_problem FOREIGN KEY (problem_id) REFERENCES problems(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- assignees are real user accounts (role "officer") so they can log in and act
+-- assignees are real user accounts so they can log in and act — เจ้าหน้าที่ดำเนินการ
+-- และหัวหน้า/รองหัวหน้ากลุ่มงาน ซึ่งรับเคสเองได้ (ดู ASSIGNABLE_ROLES ใน auth/roles.js)
 CREATE TABLE case_assignees (
   case_id VARCHAR(32) NOT NULL,
   user_id INT NOT NULL,

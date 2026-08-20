@@ -285,10 +285,11 @@ function UserManager() {
       </div>
       <div className="table-wrap">
         <table className="data">
-          <thead><tr><th>ชื่อ</th><th>Username</th><th>บทบาท</th><th>สถานะ</th><th></th></tr></thead>
+          <thead><tr><th style={{ width: 76 }}>UserID</th><th>ชื่อ</th><th>Username</th><th>บทบาท</th><th>สถานะ</th><th></th></tr></thead>
           <tbody>
             {users && users.map((u) => (
               <tr key={u.id} style={{ cursor: "default", opacity: u.active ? 1 : 0.55 }}>
+                <td className="num" title="ใช้ในคอลัมน์ assigneeUserId ตอนนำเข้าเคสจาก Excel">{u.id}</td>
                 <td><div className="row"><Avatar name={u.name || u.username} size="sm" /><span style={{ fontWeight: 500 }}>{u.name || "—"}</span></div></td>
                 <td className="mono small">{u.username}</td>
                 <td><span className="chip primary">{u.roleLabel}</span></td>
@@ -300,7 +301,7 @@ function UserManager() {
                 </td>
               </tr>
             ))}
-            {!users && <tr><td colSpan="5"><div className="muted" style={{ padding: 20 }}>กำลังโหลด…</div></td></tr>}
+            {!users && <tr><td colSpan="6"><div className="muted" style={{ padding: 20 }}>กำลังโหลด…</div></td></tr>}
           </tbody>
         </table>
       </div>

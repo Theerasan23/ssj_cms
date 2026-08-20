@@ -1,6 +1,7 @@
 // Loads all lookup / master data in the shape the frontend expects
 // (mirrors window.CMS.MASTER + STATUS from the prototype's data.js).
 const pool = require("../db");
+const { ASSIGNABLE_ROLES } = require("../auth/roles");
 
 // Editable lookup entities (admin CRUD). Each maps an API name → table + fields.
 const ENTITIES = {
@@ -90,10 +91,14 @@ async function getMaster() {
      JOIN districts d ON d.id = sd.district_id
      WHERE sd.active = 1 ORDER BY sd.ord, sd.id`);
   const [laws] = await pool.query("SELECT id, label FROM laws WHERE active = 1 ORDER BY ord, id");
-  // "officers" = assignable staff — active user accounts with role เจ้าหน้าที่ดำเนินการ,
-  // so every assignee can log in and continue the workflow
+  // "officers" = assignable staff — active user accounts that may be assigned a case, so
+  // every assignee can log in and continue the workflow. Beyond เจ้าหน้าที่ดำเนินการ this
+  // includes หัวหน้า/รองหัวหน้ากลุ่มงาน, who take cases themselves as well as assigning them
+  // (see ASSIGNABLE_ROLES). `role` travels with each row so the picker can tell them apart.
   const [officers] = await pool.query(
-    "SELECT id, name, phone, email FROM users WHERE role_id = 'officer' AND active = 1 ORDER BY name");
+    `SELECT id, name, phone, email, role_id FROM users
+     WHERE role_id IN (${ASSIGNABLE_ROLES.map(() => "?").join(",")}) AND active = 1 ORDER BY name`,
+    ASSIGNABLE_ROLES);
   const [sections] = await pool.query("SELECT id, law_id, text, fine1, fine2, fine3 FROM law_sections ORDER BY ord, id");
   const [statuses] = await pool.query("SELECT code, label, css_class FROM statuses ORDER BY ord, code");
   const [roles] = await pool.query("SELECT id, name, role_label, initials, descr FROM roles ORDER BY ord, id");
@@ -107,7 +112,7 @@ async function getMaster() {
     laws: laws.map((r) => ({ id: r.id, label: r.label })),
     sources: sources.map((r) => r.name),
     problems: problems.map((r) => r.name),
-    officers: officers.map((r) => ({ id: r.id, name: r.name, phone: r.phone, email: r.email })),
+    officers: officers.map((r) => ({ id: r.id, name: r.name, phone: r.phone, email: r.email, role: r.role_id })),
     committees: committees.map((r) => r.name),
     resolutions: resolutions.map((r) => r.name),
     districts: districts.map((r) => r.name),

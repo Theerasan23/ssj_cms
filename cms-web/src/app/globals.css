@@ -820,7 +820,10 @@ table.data .actions-cell { text-align: right; }
 .v-event .v-meta  { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 
 /* ---------------- Tabs ---------------- */
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
+/* เลื่อนแนวนอนได้เมื่อแท็บเยอะ/จอแคบ — ไม่งั้นแท็บจะถูกบีบจนอ่านไม่ออกหรือดันการ์ดล้นออกนอกจอ
+   (จอกว้างที่แท็บพอดีอยู่แล้วหน้าตาไม่เปลี่ยน) */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
   padding: 10px 16px;
   background: transparent; border: none;
@@ -828,6 +831,7 @@ table.data .actions-cell { text-align: right; }
   cursor: pointer; position: relative;
   border-radius: 0;
   display: inline-flex; align-items: center; gap: 8px;
+  flex: 0 0 auto; white-space: nowrap;
   font-weight: 500;
 }
 .tab:hover { color: var(--text); }
