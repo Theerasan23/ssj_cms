@@ -8,7 +8,9 @@ const router = express.Router();
 router.get("/", requireAuth, async (req, res, next) => {
   try {
     const [rows] = await pool.query(
-      `SELECT t.date, t.time, t.user_name AS who, t.title AS what, COALESCE(c.etracking, c.title) AS target
+      // caseId ส่งไปด้วยเพื่อให้หน้า Audit Log กดเปิดเคสต้นทางได้ (target เป็นแค่ข้อความสำหรับอ่าน)
+      `SELECT t.date, t.time, t.user_name AS who, t.title AS what,
+              c.id AS caseId, COALESCE(c.etracking, c.title) AS target
        FROM case_timeline t JOIN cases c ON c.id = t.case_id
        ORDER BY t.date DESC, t.id DESC LIMIT 40`
     );

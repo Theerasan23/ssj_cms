@@ -360,24 +360,34 @@ function UserForm({ editing, roles, onClose, onSave }) {
 
 function AuditLog() {
   const [logs, setLogs] = useState(null);
+  const router = useRouter();
   useEffect(() => { api.get("/audit").then(setLogs).catch(() => setLogs([])); }, []);
   return (
     <div className="card">
       <div className="card-header"><div><h3>Audit Log</h3><div className="card-sub">บันทึกกิจกรรมจริงจาก timeline ของเคส (40 ล่าสุด)</div></div></div>
       <div className="table-wrap">
         <table className="data">
-          <thead><tr><th>วันที่</th><th>ผู้ใช้</th><th>การกระทำ</th><th>เคส</th></tr></thead>
+          <thead><tr><th>วันที่</th><th>ผู้ใช้</th><th>การกระทำ</th><th>เคส</th><th>รหัสเคส</th><th></th></tr></thead>
           <tbody>
             {logs && logs.map((l, i) => (
-              <tr key={i} style={{ cursor: "default" }}>
+              // แถวกดเข้าไปดูเคสต้นทางได้ (แบบเดียวกับตารางเคสหน้าอื่น) — audit มาจาก timeline
+              // ที่ JOIN กับตาราง cases อยู่แล้ว เคสจึงมีจริงเสมอ ไม่มีลิงก์ตาย
+              <tr key={i} style={{ cursor: "pointer" }} title="เปิดดูเคสนี้"
+                onClick={() => router.push(`/cases/${l.caseId}`)}>
                 <td className="muted small">{fmtThaiDate(l.date)} {l.time}</td>
                 <td><div className="row"><Avatar name={l.who} size="sm" /><span>{l.who}</span></div></td>
                 <td>{l.what}</td>
                 <td className="mono">{l.target}</td>
+                {/* id แบบใหม่ยาว 21 ตัวอักษร ถ้าปล่อยให้ตัดบรรทัดแถวจะสูงไม่เท่ากัน */}
+                <td className="mono small" style={{ whiteSpace: "nowrap" }}>{l.caseId}</td>
+                <td onClick={(e) => e.stopPropagation()}>
+                  <button className="icon-btn" style={{ width: 30, height: 30 }} title="เปิดดูเคสนี้"
+                    onClick={() => router.push(`/cases/${l.caseId}`)}><Icon name="chevron-right" size={14} /></button>
+                </td>
               </tr>
             ))}
-            {logs && logs.length === 0 && <tr><td colSpan="4"><div className="table-empty">ยังไม่มีกิจกรรม</div></td></tr>}
-            {!logs && <tr><td colSpan="4"><div className="muted" style={{ padding: 20 }}>กำลังโหลด…</div></td></tr>}
+            {logs && logs.length === 0 && <tr><td colSpan="6"><div className="table-empty">ยังไม่มีกิจกรรม</div></td></tr>}
+            {!logs && <tr><td colSpan="6"><div className="muted" style={{ padding: 20 }}>กำลังโหลด…</div></td></tr>}
           </tbody>
         </table>
       </div>

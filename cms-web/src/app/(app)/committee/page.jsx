@@ -29,12 +29,14 @@ export default function CommitteePage() {
           <ExportButtons rows={() => (tab === "pending" ? pending : history)} filename={`committee-${tab}`} size="md"
             columns={tab === "pending" ? [
               { header: "E-tracking", value: (c) => c.etracking || "" },
+              { header: "เลขรับ สสจ.", value: (c) => c.letterNo || "" },
               { header: "ชื่อเคส", value: (c) => c.title },
               { header: "พรบ.", value: (c) => c.laws.map((l) => cms.lawLabel(l)).join(", ") },
               { header: "คณะกรรมการ", value: (c) => (c.board ? c.board.committees.join(", ") : "คณะกรรมการพิจารณาคดี") },
               { header: "SLA", value: (c) => cms.caseSla(c).label },
             ] : [
               { header: "E-tracking", value: (c) => c.etracking || "" },
+              { header: "เลขรับ สสจ.", value: (c) => c.letterNo || "" },
               { header: "ชื่อเคส", value: (c) => c.title },
               { header: "ครั้งที่ประชุม", value: (c) => `${c.board.meetingNo}/${c.board.year}` },
               { header: "วันที่ประชุม", value: (c) => cms.fmtThaiDate(c.board.meetingDate) },
@@ -54,11 +56,12 @@ export default function CommitteePage() {
           <table className="data">
             {tab === "pending" ? (
               <>
-                <thead><tr><th>E-tracking</th><th>ชื่อเคส</th><th>พรบ.</th><th>คณะกรรมการที่เหมาะสม</th><th>SLA</th><th></th></tr></thead>
+                <thead><tr><th>E-tracking</th><th>เลขรับ สสจ.</th><th>ชื่อเคส</th><th>พรบ.</th><th>คณะกรรมการที่เหมาะสม</th><th>SLA</th><th></th></tr></thead>
                 <tbody>
                   {pending.map((c) => (
                     <tr key={c.id} onClick={() => router.push(`/cases/${c.id}`)}>
                       <td className="num">{c.etracking || "—"}</td>
+                      <td className="num">{c.letterNo || "—"}</td>
                       <td style={{ fontWeight: 500 }}>{c.title}</td>
                       <td><div className="tag-list">{c.laws.map((l) => <span key={l} className="chip">{cms.lawLabel(l)}</span>)}</div></td>
                       <td>{c.board ? c.board.committees.join(", ") : <span className="chip">คณะกรรมการพิจารณาคดี</span>}</td>
@@ -66,16 +69,17 @@ export default function CommitteePage() {
                       <td><button className="btn btn-primary btn-sm">บันทึกมติ <Icon name="arrow-right" size={12} /></button></td>
                     </tr>
                   ))}
-                  {pending.length === 0 && <tr><td colSpan="6"><div className="table-empty"><div className="empty-icon"><Icon name="calendar" size={24} /></div>ยังไม่มีเคสรอเข้าประชุม</div></td></tr>}
+                  {pending.length === 0 && <tr><td colSpan="7"><div className="table-empty"><div className="empty-icon"><Icon name="calendar" size={24} /></div>ยังไม่มีเคสรอเข้าประชุม</div></td></tr>}
                 </tbody>
               </>
             ) : (
               <>
-                <thead><tr><th>E-tracking</th><th>ชื่อเคส</th><th>ครั้งที่ประชุม</th><th>วันที่ประชุม</th><th>มติ</th><th></th></tr></thead>
+                <thead><tr><th>E-tracking</th><th>เลขรับ สสจ.</th><th>ชื่อเคส</th><th>ครั้งที่ประชุม</th><th>วันที่ประชุม</th><th>มติ</th><th></th></tr></thead>
                 <tbody>
                   {history.map((c) => (
                     <tr key={c.id} onClick={() => router.push(`/cases/${c.id}`)}>
                       <td className="num">{c.etracking || "—"}</td>
+                      <td className="num">{c.letterNo || "—"}</td>
                       <td style={{ fontWeight: 500 }}>{c.title}</td>
                       <td className="num">{c.board.meetingNo}/{c.board.year}</td>
                       <td>{cms.fmtThaiDate(c.board.meetingDate)}</td>
@@ -83,7 +87,7 @@ export default function CommitteePage() {
                       <td><Icon name="chevron-right" size={16} style={{ color: "var(--text-muted)" }} /></td>
                     </tr>
                   ))}
-                  {history.length === 0 && <tr><td colSpan="6"><div className="table-empty"><div className="empty-icon"><Icon name="history" size={24} /></div>ยังไม่มีประวัติมติ</div></td></tr>}
+                  {history.length === 0 && <tr><td colSpan="7"><div className="table-empty"><div className="empty-icon"><Icon name="history" size={24} /></div>ยังไม่มีประวัติมติ</div></td></tr>}
                 </tbody>
               </>
             )}

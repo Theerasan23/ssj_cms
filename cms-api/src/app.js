@@ -16,7 +16,25 @@ const app = express();
 // is the real client (login rate-limiter) and req.protocol reflects https.
 app.set("trust proxy", 1);
 
-const origins = (process.env.CORS_ORIGIN || "http://localhost:3000").split(",").map((s) => s.trim());
+// โดเมนจริงที่ระบบขึ้น production — อนุญาตไว้ในโค้ดเสมอ ไม่ต้องรอ .env
+// (ไฟล์ .env ของเครื่อง server เป็นคนละไฟล์กับที่อยู่ใน git ถ้าลืมตั้ง CORS_ORIGIN บนเครื่องนั้น
+//  เบราว์เซอร์จะโดน CORS block ทันทีทั้งที่โค้ดถูก — ใส่ไว้ตรงนี้กันพลาด)
+const BUILT_IN_ORIGINS = ["https://drivethru-nontfda.moph.go.th"];
+
+// CORS origin คือ scheme://host[:port] เท่านั้น "ไม่มี path"
+// ถ้าตั้งค่ามาพร้อม path เช่น https://example.com/cms/ จะเทียบกับ header Origin ไม่ตรง
+// แล้วโดน block เงียบ ๆ โดยไม่มี error บอก จึงตัดให้เหลือแค่ origin เสมอ
+function toOrigin(value) {
+  const v = String(value || "").trim();
+  if (!v) return null;
+  try { return new URL(v).origin; } catch { return v.replace(/\/+$/, ""); }
+}
+
+const origins = [...new Set([
+  ...(process.env.CORS_ORIGIN || "http://localhost:3000").split(",").map(toOrigin),
+  ...BUILT_IN_ORIGINS.map(toOrigin),
+].filter(Boolean))];
+
 app.use(cors({ origin: origins, credentials: true }));
 app.use(express.json({ limit: "2mb" }));
 app.use(morgan("dev"));
