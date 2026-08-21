@@ -708,17 +708,19 @@ export default function ReportsPage() {
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
-        <div className="card-header"><h3>เคสเกินเวลาตามขั้น × เดือน (Heatmap)</h3><span className="muted small">ทุกช่วงเวลา · เข้มกว่า = เกินเวลามากกว่า</span></div>
+        <div className="card-header"><h3>เคสเกินเวลาตามขั้น × เดือน (Heatmap)</h3><span className="muted small">12 เดือนล่าสุด · ไม่ขึ้นกับตัวกรองช่วงเวลา · เข้มกว่า = เกินเวลามากกว่า</span></div>
         <div className="card-body">
           <div className="heatmap-scroll">
           <div className="heatmap-grid">
             <div></div>
-            {MONTHS.map((m, i) => <div key={i} className="h-label" style={{ textAlign: "center" }}>{m}</div>)}
+            {/* หัวคอลัมน์ต้องมาจาก monthlyData ซึ่งเป็น "12 เดือนล่าสุดนับถึงวันนี้" (ก.ย.→ส.ค. ไม่ใช่ ม.ค.→ธ.ค.)
+                เพราะ heat[] ถูกจัดลงช่องตามลำดับของ monthlyData ถ้าใช้ MONTHS ตรง ๆ ป้ายเดือนจะเลื่อนไม่ตรงข้อมูล */}
+            {monthlyData.map((d, i) => <div key={i} className="h-label" style={{ textAlign: "center" }}>{d.label}</div>)}
             {STAGES.map((s, i) => (
               <Fragment key={i}>
                 <div className="h-label">{s}</div>
                 {heat[i].map((v, j) => (
-                  <div key={j} className="h-cell" style={{ background: v === 0 ? "var(--surface-2)" : `oklch(${95 - v * 6}% ${0.05 + v * 0.025} 30)`, color: v > 3 ? "#fff" : "var(--primary-900)" }} title={`${s} - ${MONTHS[j]}: ${v}`}>{v || ""}</div>
+                  <div key={j} className="h-cell" style={{ background: v === 0 ? "var(--surface-2)" : `oklch(${95 - v * 6}% ${0.05 + v * 0.025} 30)`, color: v > 3 ? "#fff" : "var(--primary-900)" }} title={`${s} · ${monthlyData[j].label} ${String(monthlyData[j].y + 543).slice(-2)}: ${v} เคส`}>{v || ""}</div>
                 ))}
               </Fragment>
             ))}
