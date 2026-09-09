@@ -9,6 +9,7 @@ DROP TABLE IF EXISTS case_followups;
 DROP TABLE IF EXISTS case_decisions;
 DROP TABLE IF EXISTS case_investigations;
 DROP TABLE IF EXISTS case_timeline;
+DROP TABLE IF EXISTS case_fine_letters;
 DROP TABLE IF EXISTS case_fines;
 DROP TABLE IF EXISTS case_board_meeting_sections;
 DROP TABLE IF EXISTS case_board_meeting_committees;
@@ -338,6 +339,22 @@ CREATE TABLE case_fines (
   seq         INT NOT NULL DEFAULT 0,
   CONSTRAINT fk_fine_case    FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE,
   CONSTRAINT fk_fine_section FOREIGN KEY (section_id) REFERENCES law_sections(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- หนังสือแจ้งเปรียบเทียบปรับที่ส่งถึงผู้ถูกร้อง (บันทึกซ้ำได้หลายครั้ง เช่น ทวงถามครั้งที่ 2/3)
+CREATE TABLE case_fine_letters (
+  id           INT AUTO_INCREMENT PRIMARY KEY,
+  case_id      VARCHAR(32) NOT NULL,
+  round        INT NOT NULL DEFAULT 1,       -- หนังสือปรับครั้งที่
+  letter_no    VARCHAR(64),                  -- เลขที่หนังสือ
+  letter_date  DATE,                         -- ลงวันที่
+  due_date     DATE,                         -- วันที่นัดชำระปรับ
+  recipient    VARCHAR(191),                 -- เรียน (ชื่อผู้รับหนังสือ)
+  user_name    VARCHAR(128),
+  created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  seq          INT NOT NULL DEFAULT 0,
+  INDEX idx_fine_letter_case (case_id, seq),
+  CONSTRAINT fk_fine_letter_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE case_timeline (

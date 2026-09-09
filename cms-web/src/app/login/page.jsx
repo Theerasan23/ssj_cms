@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
+  const [showPw, setShowPw] = useState(false);
 
   useEffect(() => {
     if (!booting && loggedIn) router.replace("/dashboard");
@@ -72,6 +73,15 @@ export default function LoginPage() {
 
       <div className="login-form-side">
         <form className="login-card" onSubmit={submit}>
+          {/* โลโก้นี้โผล่เฉพาะตอนแผงซ้ายถูกซ่อน (จอต่ำกว่า 1100px) — ไม่งั้นหน้าจะไม่มีชื่อหน่วยงานเลย */}
+          <div className="login-brand">
+            <div className="mark">คบส</div>
+            <div>
+              <div className="name">กลุ่มงานคุ้มครองผู้บริโภค</div>
+              <div className="sub">สำนักงานสาธารณสุขจังหวัดนนทบุรี</div>
+            </div>
+          </div>
+
           <div>
             <h2>เข้าสู่ระบบ</h2>
             <div className="login-sub">กรอก Username และ Password ของหน่วยงาน</div>
@@ -88,22 +98,33 @@ export default function LoginPage() {
           )}
 
           <div className="field">
-            <label>Username</label>
-            <input className="input" placeholder="เช่น natsiri.p" value={username}
-              onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+            <label htmlFor="login-username">Username</label>
+            {/* ไอคอนวางไว้ "หลัง" input เพื่อให้ :focus + .field-icon เปลี่ยนสีตามโฟกัสได้ */}
+            <div className="login-field">
+              <input id="login-username" className="input" placeholder="เช่น natsiri.p" value={username}
+                onChange={(e) => setUsername(e.target.value)} autoComplete="username" />
+              <Icon className="field-icon" name="user" size={16} />
+            </div>
           </div>
           <div className="field">
-            <label>Password</label>
-            <input type="password" className="input" placeholder="••••••••" value={password}
-              onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+            <label htmlFor="login-password">Password</label>
+            <div className="login-field has-toggle">
+              <input id="login-password" type={showPw ? "text" : "password"} className="input" placeholder="••••••••" value={password}
+                onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+              <Icon className="field-icon" name="lock" size={16} />
+              <button type="button" className="peek" onClick={() => setShowPw((v) => !v)}
+                aria-label={showPw ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}>
+                {showPw ? "ซ่อน" : "แสดง"}
+              </button>
+            </div>
           </div>
           <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={loading}>
             {loading ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
             {!loading && <Icon name="arrow-right" size={16} />}
           </button>
 
-          <div className="small muted" style={{ textAlign: "center", marginTop: 8 }}>
-            สำนักงานสาธารณสุขจังหวัดนนทบุรี
+          <div className="login-foot">
+            <Icon name="shield" size={13} /> ระบบภายในสำหรับเจ้าหน้าที่ สสจ.นนทบุรี
           </div>
         </form>
       </div>

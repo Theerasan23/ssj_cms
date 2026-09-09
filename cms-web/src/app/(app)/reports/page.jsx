@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon";
 import { Avatar, Donut, SLABadge, StatusBadge, Tabs } from "@/components/ui";
 import { useApp } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
+import { cardLink } from "@/lib/cardLink";
 import { isSupervisor, SUPERVISOR_ROLES } from "@/lib/roles";
 import { CANCELLED, deadlineWatch, officerPerformance, onTimeRate, problemBreakdown, reportScope, stageBreakdown } from "@/lib/caseStats";
 
@@ -18,16 +19,6 @@ const PERIODS = [
   { value: "365", label: "12 เดือนล่าสุด" },
   { value: "all", label: "ทั้งหมด (ทุกช่วงเวลา)" },
 ];
-
-// การ์ด KPI กดเข้าไปดูรายการเคสตามตัวกรองของการ์ดนั้นได้ (หน้า /cases อ่านตัวกรองจาก query string)
-// ใช้ role=button + Enter/Space เพราะ .kpi-card เป็น div ที่มีไอคอน/ข้อความซ้อนอยู่แล้ว
-const cardLink = (router, href) => ({
-  role: "button",
-  tabIndex: 0,
-  title: "ดูรายการเคสตามตัวกรองนี้",
-  onClick: () => router.push(href),
-  onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(href); } },
-});
 
 const ellipsis = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 
@@ -325,6 +316,15 @@ function ProblemTypesCard({ data, scopeLabel }) {
   );
 }
 
+// แถบสัดส่วนใต้ตัวเลขบนการ์ด — ให้ % อ่านออกด้วยสายตา ไม่ต้องเอาตัวเลขไปเทียบกันเอง
+function PctBar({ pct, tone = "var(--primary-600)" }) {
+  return (
+    <div style={{ height: 6, borderRadius: 99, background: "var(--surface-2)", overflow: "hidden" }}>
+      <div style={{ width: `${Math.min(100, pct)}%`, height: "100%", background: tone, borderRadius: 99 }} />
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const { role, cms } = useApp();
   const router = useRouter();
@@ -372,6 +372,29 @@ export default function ReportsPage() {
     return grid;
   }, [scoped, cms, monthlyData]);
 
+  // ----- ความถี่การใช้งานระบบของเจ้าหน้าที่ (เจ้าหน้าที่ × เดือน) -----
+  // ระบบไม่มีตาราง log การล็อกอิน — case_timeline คือบันทึก "ใครทำอะไรกับเคสไหนวันไหน"
+  // จึงเป็นร่องรอยการใช้งานที่ใกล้เคียงที่สุด นับเป็น "จำนวนครั้งที่บันทึกงาน" ไม่ใช่จำนวนเคส
+  // ชื่อในแถวเป็นชื่อที่ถูกบันทึกไว้ตอนทำรายการ (อาจเป็นชื่อบัญชี เช่น admin1) ไม่ได้ไปจับคู่กับ
+  // ทะเบียนเจ้าหน้าที่ เพราะชื่อที่บันทึกไว้ในอดีตอาจไม่ตรงกับทะเบียนปัจจุบันแล้ว
+  const userHeat = useMemo(() => {
+    const rows = new Map();
+    scoped.forEach((c) => (c.timeline || []).forEach((ev) => {
+      if (!ev.user || !ev.date) return;
+      const y = Number(ev.date.slice(0, 4)), m = Number(ev.date.slice(5, 7)) - 1;
+      const idx = monthlyData.findIndex((b) => b.y === y && b.m === m);
+      if (idx < 0) return; // เก่ากว่า 12 เดือน ไม่มีช่องให้ลง
+      let r = rows.get(ev.user);
+      if (!r) { r = { name: ev.user, cells: Array(12).fill(0), total: 0 }; rows.set(ev.user, r); }
+      r.cells[idx]++;
+      r.total++;
+    }));
+    const all = [...rows.values()].sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "th"));
+    // ความเข้มของสีเทียบกับช่องที่สูงสุด ไม่ใช่ค่าคงที่ ไม่งั้นเดือนที่งานเยอะจะเข้มจนเท่ากันหมด
+    const max = Math.max(1, ...all.flatMap((r) => r.cells));
+    return { list: all.slice(0, 12), hidden: Math.max(0, all.length - 12), max, grand: all.reduce((n, r) => n + r.total, 0) };
+  }, [scoped, monthlyData]);
+
   const watch = useMemo(() => deadlineWatch(scoped, cms), [scoped, cms]);
   const problems = useMemo(() => problemBreakdown(inPeriod), [inPeriod]);
 
@@ -398,6 +421,31 @@ export default function ReportsPage() {
   const lockedAll = scoped.filter((c) => cms.isCaseLocked(c)).length;
   const overdueAll = activeCases.filter((c) => cms.caseSla(c).kind === "overdue").length;
   const onTimeNow = onTimeRate(scoped, cms);
+
+  // ----- การลงพื้นที่ตรวจสอบ (ย้ายมาจากหน้าค่าปรับ — ที่นั่นเหลือเฉพาะการแยกตาม พรบ.) -----
+  const siteEvents = [];
+  const meetEvents = [];
+  scoped.forEach((c) => (c.investigations || []).forEach((ev) => (ev.kind === "meeting" ? meetEvents : siteEvents).push(ev)));
+  const casesWithSite = scoped.filter((c) => (c.investigations || []).some((ev) => ev.kind === "site")).length;
+  const casesWithMeet = scoped.filter((c) => (c.investigations || []).some((ev) => ev.kind === "meeting")).length;
+  const pctOf = (n, total) => (total ? Math.round((n / total) * 100) : 0);
+  const sitePct = pctOf(casesWithSite, scoped.length);
+  const meetPct = pctOf(casesWithMeet, scoped.length);
+  // หนังสือส่งหน่วยงานอื่น = บันทึกความคืบหน้าของเคสที่อยู่สถานะ "ส่งต่อหน่วยงาน" (06)
+  // ตาราง case_followups ไม่ได้เก็บชนิดของบันทึกไว้ ชนิดจึงอ่านจากสถานะปัจจุบันของเคส
+  const forwardLetters = scoped.filter((c) => c.status === "06").reduce((n, c) => n + (c.followups?.length || 0), 0);
+  const forwardCases = scoped.filter((c) => c.status === "06" && (c.followups?.length || 0) > 0).length;
+  const forwardPct = pctOf(forwardCases, scoped.length);
+  const inspectTotal = siteEvents.length + meetEvents.length + forwardLetters;
+  // บันทึกการตรวจสอบเก็บแค่ "วันที่" ไม่มีเวลา — จึงแยกด้วยวันในสัปดาห์ของวันที่ลงพื้นที่
+  // (จ.–ศ. = วันทำการ, ส.–อา. = นอกวันทำการ) ไม่ใช่เวลานาฬิกาจริง
+  const isWorkday = (d) => { const n = new Date(`${d}T00:00:00`).getDay(); return n >= 1 && n <= 5; };
+  const datedSite = siteEvents.filter((ev) => ev.date);
+  const inHours = datedSite.filter((ev) => isWorkday(ev.date)).length;
+  const offHours = datedSite.length - inHours;
+  const wantFollow = scoped.filter((c) => c.wantsFollowup);
+  const wantNotified = wantFollow.filter((c) => (c.fineLetters?.length || 0) > 0).length;
+  const wantPct = pctOf(wantNotified, wantFollow.length);
 
   // ----- หมวด ง. สรุปตามช่วงเวลา -----
   const periodNote = period === "all" ? "ทุกช่วงเวลา" : `${period} วันล่าสุด`;
@@ -555,6 +603,99 @@ export default function ReportsPage() {
           {watchTab === "near"
             ? <DeadlineList rows={watch.near} cms={cms} router={router} empty="ยังไม่มีเคสที่ใกล้ครบกำหนด" />
             : <DeadlineList rows={watch.overdue} cms={cms} router={router} empty="ไม่มีเคสที่เกินเวลา" />}
+        </div>
+      </div>
+
+      <SectionHead title="การลงพื้นที่ตรวจสอบ" sub={`นับจากเคสทั้งหมดในระบบ ${scoped.length} เคส · ไม่ขึ้นกับช่วงเวลาที่เลือก`} />
+      {/* % คือตัวเลขหลักของสามการ์ดแรก (สัดส่วนเคสที่ได้ทำงานนั้น) — จำนวนครั้งอยู่บรรทัดล่าง
+          เดิม % ถูกซ่อนอยู่ในบรรทัดเล็กสีเทา อ่านผ่าน ๆ แล้วไม่เห็น */}
+      <div className="kpi-grid">
+        <div className={`kpi-card ${siteEvents.length === 0 ? "is-zero" : ""}`}>
+          <div className="kpi-label">ลงพื้นที่ตรวจสอบ</div>
+          <div className="row" style={{ gap: 8, alignItems: "baseline", flexWrap: "nowrap" }}>
+            <div className="kpi-value">{sitePct}%</div>
+            <div className="small muted">ของเคสทั้งหมด</div>
+          </div>
+          <PctBar pct={sitePct} />
+          <div className="kpi-trend"><Icon name="map-pin" size={14} /> {casesWithSite} จาก {scoped.length} เคส · {siteEvents.length} ครั้ง</div>
+          <div className="kpi-icon"><Icon name="map-pin" size={18} /></div>
+        </div>
+        <div className={`kpi-card ${meetEvents.length === 0 ? "is-zero" : ""}`}>
+          <div className="kpi-label">หนังสือเชิญพบเพื่อชี้แจง</div>
+          <div className="row" style={{ gap: 8, alignItems: "baseline", flexWrap: "nowrap" }}>
+            <div className="kpi-value">{meetPct}%</div>
+            <div className="small muted">ของเคสทั้งหมด</div>
+          </div>
+          <PctBar pct={meetPct} />
+          <div className="kpi-trend"><Icon name="users" size={14} /> {casesWithMeet} จาก {scoped.length} เคส · {meetEvents.length} ฉบับ</div>
+          <div className="kpi-icon"><Icon name="users" size={18} /></div>
+        </div>
+        <div className={`kpi-card ${forwardLetters === 0 ? "is-zero" : ""}`}>
+          <div className="kpi-label">หนังสือส่งให้หน่วยงานอื่น</div>
+          <div className="row" style={{ gap: 8, alignItems: "baseline", flexWrap: "nowrap" }}>
+            <div className="kpi-value">{forwardPct}%</div>
+            <div className="small muted">ของเคสทั้งหมด</div>
+          </div>
+          <PctBar pct={forwardPct} />
+          <div className="kpi-trend"><Icon name="send" size={14} /> {forwardCases} จาก {scoped.length} เคส · {forwardLetters} ฉบับ</div>
+          <div className="kpi-icon"><Icon name="send" size={18} /></div>
+        </div>
+        <div className={`kpi-card ${inspectTotal === 0 ? "is-zero" : "accent"}`}>
+          <div className="kpi-label">รวมทั้งหมด</div>
+          <div className="kpi-value">{inspectTotal}</div>
+          <div className="kpi-trend"><Icon name="stack" size={14} /> ลงพื้นที่ + เชิญพบ + ส่งหน่วยงานอื่น</div>
+          <div className="kpi-icon"><Icon name="stack" size={18} /></div>
+        </div>
+      </div>
+      {/* เดิมเป็นแถบซ้อนสี + คำอธิบายยาว อ่านยากและตอน 100/0 แถบก็ไม่บอกอะไร
+          ตอนนี้เหลือสองตัวเลขใหญ่ ๆ ส่วนนิยาม จ.–ศ./ส.–อา. ย้ายไปอยู่บรรทัดใต้หัวข้อ
+          เรื่อง "ขอให้ติดตาม" ไม่เกี่ยวกับช่วงเวลา จึงแยกออกมาเป็นการ์ดของตัวเอง */}
+      <div className="section-row" style={{ marginTop: 16 }}>
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3>ช่วงเวลาที่ลงพื้นที่</h3>
+              <div className="card-sub">{datedSite.length} ครั้งที่ระบุวันที่ · จ.–ศ. คือในเวลาทำการ</div>
+            </div>
+          </div>
+          <div className="card-body">
+            {datedSite.length === 0 ? (
+              <div className="muted small">ยังไม่มีการลงพื้นที่ที่ระบุวันที่ไว้</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div>
+                  <div className="small muted"><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: "var(--success-700)", marginRight: 6 }} />ในเวลาทำการ</div>
+                  <div style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.2, color: "var(--success-700)" }}>{pctOf(inHours, datedSite.length)}%</div>
+                  <div className="small muted">{inHours} ครั้ง</div>
+                </div>
+                <div>
+                  <div className="small muted"><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: "var(--warning-700)", marginRight: 6 }} />นอกเวลาทำการ</div>
+                  <div style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.2, color: offHours > 0 ? "var(--warning-700)" : "var(--text-soft)" }}>{pctOf(offHours, datedSite.length)}%</div>
+                  <div className="small muted">{offHours} ครั้ง</div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h3>ผู้ร้องขอให้ติดตามผล</h3>
+              <div className="card-sub">แจ้งผลกลับแล้วกี่เคส</div>
+            </div>
+          </div>
+          <div className="card-body">
+            {wantFollow.length === 0 ? (
+              <div className="muted small">ยังไม่มีเคสที่ผู้ร้องขอให้ติดตามผล</div>
+            ) : (
+              <>
+                <div style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.2, color: wantNotified > 0 ? "var(--success-700)" : "var(--text-soft)" }}>{wantPct}%</div>
+                <div className="small muted" style={{ marginBottom: 10 }}>แจ้งแล้ว {wantNotified} จาก {wantFollow.length} เคส</div>
+                <PctBar pct={wantPct} tone="var(--success-700)" />
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -726,6 +867,60 @@ export default function ReportsPage() {
             ))}
           </div>
           </div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-header">
+          <h3>ความถี่การใช้งานระบบของเจ้าหน้าที่ (Heatmap)</h3>
+          <span className="muted small">12 เดือนล่าสุด · ไม่ขึ้นกับตัวกรองช่วงเวลา · เข้มกว่า = บันทึกงานถี่กว่า</span>
+        </div>
+        <div className="card-body">
+          {userHeat.list.length === 0 ? (
+            <div className="muted small">ยังไม่มีบันทึกการทำงานใน 12 เดือนล่าสุด</div>
+          ) : (
+            <>
+              <div className="heatmap-scroll">
+                <div className="heatmap-grid by-user">
+                  <div></div>
+                  {monthlyData.map((d, i) => <div key={i} className="h-label" style={{ textAlign: "center" }}>{d.label}</div>)}
+                  <div className="h-label" style={{ textAlign: "center" }}>รวม</div>
+                  {userHeat.list.map((r) => (
+                    <Fragment key={r.name}>
+                      <div className="h-label h-name" title={r.name}>{r.name}</div>
+                      {r.cells.map((v, j) => {
+                        const ratio = v / userHeat.max;
+                        return (
+                          <div key={j} className="h-cell"
+                            style={{
+                              background: v === 0 ? "var(--surface-2)" : `oklch(${96 - ratio * 42}% ${0.02 + ratio * 0.11} 250)`,
+                              color: ratio > 0.55 ? "#fff" : "var(--primary-900)",
+                            }}
+                            title={`${r.name} · ${monthlyData[j].label} ${String(monthlyData[j].y + 543).slice(-2)}: ${v} ครั้ง`}>
+                            {v || ""}
+                          </div>
+                        );
+                      })}
+                      <div className="h-total" title={`${r.name}: รวม ${r.total} ครั้ง`}>{r.total}</div>
+                    </Fragment>
+                  ))}
+                </div>
+              </div>
+              <div className="row between" style={{ marginTop: 12, gap: 12 }}>
+                <div className="small muted">
+                  นับจากบันทึกการทำงานในเคส รวม {userHeat.grand} ครั้ง จากเจ้าหน้าที่ {userHeat.list.length + userHeat.hidden} คน
+                  {userHeat.hidden > 0 && <> · แสดง 12 อันดับแรก (อีก {userHeat.hidden} คนไม่ได้แสดง)</>}
+                </div>
+                <div className="row small muted" style={{ gap: 6, flexWrap: "nowrap" }}>
+                  น้อย
+                  {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+                    <span key={t} style={{ width: 18, height: 12, borderRadius: 3, background: t === 0 ? "var(--surface-2)" : `oklch(${96 - t * 42}% ${0.02 + t * 0.11} 250)` }} />
+                  ))}
+                  มาก
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </main>

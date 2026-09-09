@@ -8,6 +8,7 @@ import { ExportButtons } from "@/components/ExportButtons";
 import { useApp } from "@/context/AppContext";
 import { useAllCases } from "@/lib/useCases";
 import { SUPERVISOR_ROLES } from "@/lib/roles";
+import { caseSectionIds, sectionShortLabel } from "@/lib/caseStats";
 
 export default function CaseListPage() {
   return (
@@ -24,10 +25,12 @@ function CaseList() {
   const { cases, loading } = useAllCases();
 
   // ตัวกรองรับค่าเริ่มต้นจาก URL ได้ — การ์ดบนหน้าหลักลิงก์มาที่นี่พร้อมตัวกรองของมัน
-  // (?status=02 หรือ ?status=01,02 · ?sla=near|overdue|in-time · ?state=open|closed)
+  // (?status=02 หรือ ?status=01,02 · ?law=drug,food หรือ ?law=_none · ?sec=sec-43 หรือ ?sec=_none
+  //  · ?sla=near|overdue|in-time · ?state=open|closed)
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [statusFilter, setStatusFilter] = useState(() => (searchParams.get("status") || "").split(",").filter(Boolean));
-  const [lawFilter, setLawFilter] = useState([]);
+  const [lawFilter, setLawFilter] = useState(() => (searchParams.get("law") || "").split(",").filter(Boolean));
+  const [secFilter, setSecFilter] = useState(() => (searchParams.get("sec") || "").split(",").filter(Boolean));
   const [slaFilter, setSlaFilter] = useState(() => {
     const v = searchParams.get("sla") || "";
     return ["near", "overdue", "in-time"].includes(v) ? v : "";
@@ -50,7 +53,13 @@ function CaseList() {
       if (!hay.includes(q)) return false;
     }
     if (statusFilter.length && !statusFilter.includes(c.status)) return false;
-    if (lawFilter.length && !c.laws.some((l) => lawFilter.includes(l))) return false;
+    // "_none" = เคสที่ยังไม่ได้ระบุ พรบ. ซึ่งไม่มี id ของตัวเองใน c.laws จึงต้องเช็กแยก
+    if (lawFilter.length && !(c.laws.some((l) => lawFilter.includes(l)) || (lawFilter.includes("_none") && c.laws.length === 0))) return false;
+    // มาตราไม่ได้เก็บบนตัวเคส ต้องรวมจากมติกรรมการ+ค่าปรับ จึงคำนวณต่อเมื่อมีการเลือกตัวกรองจริง ๆ
+    if (secFilter.length) {
+      const ids = caseSectionIds(c);
+      if (!(secFilter.some((x) => ids.has(x)) || (secFilter.includes("_none") && ids.size === 0))) return false;
+    }
     if (stateFilter === "open" && c.closed) return false;
     if (stateFilter === "closed" && !c.closed) return false;
     if (slaFilter) {
@@ -61,12 +70,18 @@ function CaseList() {
       if (slaFilter === "in-time" && sla.kind !== "in-time" && sla.kind !== "far") return false;
     }
     return true;
-  }), [cases, query, statusFilter, lawFilter, slaFilter, stateFilter, scope, role, cms]);
+  }), [cases, query, statusFilter, lawFilter, secFilter, slaFilter, stateFilter, scope, role, cms]);
+
+  // เลขมาตราซ้ำกันข้าม พรบ. ได้ (มาตรา 6 มีทั้งอาหารและเครื่องมือแพทย์) จึงต้องกำกับชื่อ พรบ. ไว้ด้วย
+  const sectionOptions = useMemo(() => [
+    ...(cms.MASTER.sections || []).map((sec) => ({ id: sec.id, label: `${sectionShortLabel(sec.text)} · ${cms.lawLabel(sec.law)}` })),
+    { id: "_none", label: "ไม่ระบุมาตรา" },
+  ], [cms]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   useEffect(() => { if (page > totalPages) setPage(1); }, [filtered, totalPages, page]);
   const pageItems = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const activeFiltersCount = statusFilter.length + lawFilter.length + (slaFilter ? 1 : 0) + (stateFilter ? 1 : 0) + (query ? 1 : 0);
+  const activeFiltersCount = statusFilter.length + lawFilter.length + secFilter.length + (slaFilter ? 1 : 0) + (stateFilter ? 1 : 0) + (query ? 1 : 0);
 
   if (loading) return <main className="page"><div className="muted">กำลังโหลด…</div></main>;
 
@@ -117,7 +132,7 @@ function CaseList() {
               <Icon name={showFilters ? "chevron-up" : "chevron-down"} size={14} />
             </button>
             {activeFiltersCount > 0 && (
-              <button className="btn btn-ghost btn-sm" onClick={() => { setStatusFilter([]); setLawFilter([]); setSlaFilter(""); setStateFilter(""); setQuery(""); }}>ล้างทั้งหมด</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => { setStatusFilter([]); setLawFilter([]); setSecFilter([]); setSlaFilter(""); setStateFilter(""); setQuery(""); }}>ล้างทั้งหมด</button>
             )}
           </div>
           {showFilters && (
@@ -128,7 +143,11 @@ function CaseList() {
               </div>
               <div className="field">
                 <div className="field-label small">พรบ.</div>
-                <ChipPicker options={cms.MASTER.laws.map((l) => ({ id: l.id, label: l.label }))} value={lawFilter} onChange={setLawFilter} />
+                <ChipPicker options={[...cms.MASTER.laws.map((l) => ({ id: l.id, label: l.label })), { id: "_none", label: "ไม่ระบุ พรบ." }]} value={lawFilter} onChange={setLawFilter} />
+              </div>
+              <div className="field">
+                <div className="field-label small">มาตรา</div>
+                <ChipPicker options={sectionOptions} value={secFilter} onChange={setSecFilter} />
               </div>
               <div className="field">
                 <div className="field-label small">SLA</div>

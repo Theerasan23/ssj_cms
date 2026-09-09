@@ -557,13 +557,26 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply, onChoose }) {
 // ---------- Fine / Payment ----------
 // Supports partial payments: each save adds to paidAmount; remaining = amount - paidAmount.
 // The case is closed by an explicit officer action (onCloseCase) once everything is paid.
-export function FineModal({ c, onClose, onSave, onCloseCase, onChoose }) {
+export function FineModal({ c, onClose, onSave, onAddLetter, onCloseCase, onChoose }) {
   const { cms } = useApp();
   const [fineId, setFineId] = useState(null);
   const [paidDate, setPaidDate] = useState(cms.TODAY);
   const [amount, setAmount] = useState("");
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
+  const letters = c.fineLetters || [];
+  // ครั้งที่ถัดจากหนังสือล่าสุด — เจ้าหน้าที่แก้เองได้ถ้าเลขไม่เรียงตามระบบ
+  const [letter, setLetter] = useState({
+    round: String(letters.length + 1),
+    letterNo: "",
+    letterDate: cms.TODAY,
+    dueDate: "",
+    recipient: c.respondent?.licensee || "",
+  });
+  const [addingLetter, setAddingLetter] = useState(false);
+  const setL = (k) => (v) => setLetter((prev) => ({ ...prev, [k]: v }));
+  const roundNum = Number(letter.round);
+  const letterOk = Number.isInteger(roundNum) && roundNum >= 1 && !!letter.letterDate;
 
   const remainingOf = (f) => f.amount - (f.paidAmount || 0);
   const totalRemaining = c.fines.reduce((s, f) => s + remainingOf(f), 0);
@@ -572,6 +585,25 @@ export function FineModal({ c, onClose, onSave, onCloseCase, onChoose }) {
   const selRemaining = selected ? remainingOf(selected) : 0;
   const amt = Number(amount);
   const amountOk = selected && Number.isFinite(amt) && amt > 0 && amt <= selRemaining;
+
+  async function addLetter() {
+    if (!letterOk || addingLetter) return;
+    setAddingLetter(true);
+    try {
+      const ok = await onAddLetter({
+        round: roundNum,
+        letterNo: letter.letterNo,
+        letterDate: letter.letterDate,
+        dueDate: letter.dueDate || null,
+        recipient: letter.recipient,
+      });
+      if (ok !== false) {
+        setLetter((prev) => ({ ...prev, round: String(roundNum + 1), letterNo: "", letterDate: cms.TODAY, dueDate: "" }));
+      }
+    } finally {
+      setAddingLetter(false);
+    }
+  }
 
   async function save() {
     if (!amountOk || !paidDate || saving) return;
@@ -604,6 +636,62 @@ export function FineModal({ c, onClose, onSave, onCloseCase, onChoose }) {
           </div>
           <SLABadge sla={cms.computeSlaStage(c.board?.meetingDate, 60, null)} />
         </div>
+
+        {(letters.length > 0 || onAddLetter) && (
+          <div className="stack-sm">
+            <div className="small muted" style={{ fontWeight: 600, color: "var(--text)" }}>
+              บันทึกการส่งหนังสือ{letters.length > 0 ? ` (${letters.length} ฉบับ)` : ""}
+            </div>
+            {letters.map((l) => (
+              <div key={l.id} className="row" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, alignItems: "flex-start" }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--accent-100)", color: "var(--accent-700)" }}>
+                  <Icon name="mail" size={15} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>
+                    หนังสือปรับครั้งที่ {l.round}{l.letterNo ? ` · เลขที่ ${l.letterNo}` : ""} · ลงวันที่ {cms.fmtThaiDate(l.letterDate)}
+                  </div>
+                  <div className="small muted">
+                    {l.recipient ? <>เรียน {l.recipient}</> : "เรียน —"}
+                    {l.dueDate && <> · นัดชำระปรับ {cms.fmtThaiDate(l.dueDate)}</>}
+                  </div>
+                  <div className="small muted" style={{ marginTop: 3, fontSize: 11 }}>โดย {l.user || "—"} · บันทึกเมื่อ {fmtTimestamp(cms, l.createdAt)}</div>
+                </div>
+              </div>
+            ))}
+            {onAddLetter && !allPaid && (
+              <div className="form-section">
+                <div className="section-head"><div className="section-num">+</div><div className="section-title">เพิ่มหนังสือแจ้งเปรียบเทียบปรับ</div></div>
+                <div className="section-body stack">
+                  <div className="form-grid cols-3">
+                    <FormField label="หนังสือปรับครั้งที่" req>
+                      <input type="number" min="1" className="input mono" value={letter.round} onChange={(e) => setL("round")(e.target.value)} />
+                    </FormField>
+                    <FormField label="เลขที่หนังสือ">
+                      <input className="input" placeholder="เช่น นบ 0032/1234" value={letter.letterNo} onChange={(e) => setL("letterNo")(e.target.value)} />
+                    </FormField>
+                    <FormField label="ลงวันที่" req>
+                      <DateInput value={letter.letterDate} onChange={setL("letterDate")} />
+                    </FormField>
+                  </div>
+                  <div className="form-grid cols-2">
+                    <FormField label="วันที่นัดชำระปรับ">
+                      <DateInput value={letter.dueDate} onChange={setL("dueDate")} />
+                    </FormField>
+                    <FormField label="เรียน" hint="ชื่อผู้รับหนังสือ">
+                      <input className="input" placeholder="เช่น นายจำรูญ กลัดพันธุ์" value={letter.recipient} onChange={(e) => setL("recipient")(e.target.value)} />
+                    </FormField>
+                  </div>
+                  <div className="row end">
+                    <button className="btn btn-primary" disabled={!letterOk || addingLetter} onClick={addLetter}>
+                      <Icon name="plus" size={14} /> เพิ่มหนังสือ
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {allPaid ? (
           <div style={{ padding: 14, background: "var(--success-100)", borderRadius: 8, color: "var(--success-700)" }}>

@@ -126,3 +126,17 @@ export function officerPerformance(officer, cases, cms) {
     locked: active.filter((c) => cms.isCaseLocked(c)).length,
   };
 }
+
+// เคสผูกกับ "มาตรา" ผ่านมติคณะกรรมการและรายการค่าปรับ ไม่มีฟิลด์มาตราของตัวเองบนเคส
+// หน้าค่าปรับ (การ์ดแยกตามมาตรา) กับหน้าเคส (ตัวกรองมาตรา) ต้องได้ชุดเดียวกัน จึงอยู่ที่นี่
+export function caseSectionIds(c) {
+  return new Set([
+    ...(c.fines || []).map((f) => f.secId),
+    ...(c.board?.sections || []).map((x) => x.secId),
+    ...(c.boardMeetings || []).flatMap((m) => (m.sections || []).map((x) => x.secId)),
+  ].filter(Boolean));
+}
+
+// ข้อความมาตราเต็ม ("มาตรา 16 ประกอบสถานพยาบาลโดยไม่ได้รับอนุญาต") ยาวเกินหัวการ์ดและชิปตัวกรอง
+// จึงตัดเหลือเลขมาตรา ส่วนข้อความเต็มเก็บไว้ใน tooltip
+export const sectionShortLabel = (text) => (text || "").match(/^มาตรา\s*\S+/)?.[0] || text || "";

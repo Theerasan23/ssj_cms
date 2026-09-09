@@ -133,6 +133,19 @@ export default function CaseDetailPage() {
   }
   const applyBoard = () => { if (guardLocked()) return; run(() => api.post(`/cases/${c.id}/board/apply`, {}), "ดำเนินการตามมติแล้ว"); };
   // Records a (possibly partial) payment; the modal stays open showing updated balances.
+  // บันทึกการส่งหนังสือแจ้งเปรียบเทียบปรับ — เพิ่มได้หลายครั้ง สถานะเคสไม่เปลี่ยน
+  async function addFineLetter(payload) {
+    if (guardLocked()) return false;
+    try {
+      const updated = await api.post(`/cases/${c.id}/fine-letter`, payload);
+      setC(updated);
+      toast.push({ kind: "success", title: "บันทึกการส่งหนังสือแล้ว", msg: "เพิ่มหนังสือครั้งถัดไปหรือบันทึกการชำระต่อได้" });
+      return true;
+    } catch (e) {
+      toast.push({ kind: "danger", title: "บันทึกไม่สำเร็จ", msg: e.message });
+      return false;
+    }
+  }
   async function savePayment(payload) {
     if (guardLocked()) return false;
     try {
@@ -509,8 +522,9 @@ export default function CaseDetailPage() {
         </DataCard>
       )}
 
-      {c.fines && c.fines.length > 0 && (
+      {(c.fines?.length > 0 || c.fineLetters?.length > 0) && (
         <DataCard title="ค่าปรับ" icon="money">
+          {c.fines?.length > 0 && (
           <table className="data" style={{ marginTop: -8 }}>
             <thead><tr><th>มาตรา</th><th>ครั้งที่</th><th>ค่าปรับ</th><th>ชำระแล้ว</th><th>คงเหลือ</th><th>สถานะ</th><th>วันชำระล่าสุด</th></tr></thead>
             <tbody>
@@ -535,6 +549,29 @@ export default function CaseDetailPage() {
               })}
             </tbody>
           </table>
+          )}
+          {c.fineLetters?.length > 0 && (
+            <div className="stack-sm" style={{ marginTop: c.fines?.length > 0 ? 16 : 0 }}>
+              <div className="small" style={{ fontWeight: 600 }}>หนังสือแจ้งเปรียบเทียบปรับ ({c.fineLetters.length} ฉบับ)</div>
+              {c.fineLetters.slice().reverse().map((l) => (
+                <div key={l.id} className="row" style={{ gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 8, alignItems: "flex-start" }}>
+                  <div style={{ width: 30, height: 30, borderRadius: 8, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--accent-100)", color: "var(--accent-700)" }}>
+                    <Icon name="mail" size={15} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>
+                      หนังสือปรับครั้งที่ {l.round}{l.letterNo ? ` · เลขที่ ${l.letterNo}` : ""} · ลงวันที่ {cms.fmtThaiDate(l.letterDate)}
+                    </div>
+                    <div className="small muted">
+                      เรียน {l.recipient || "—"}
+                      {l.dueDate && <> · นัดชำระปรับ {cms.fmtThaiDate(l.dueDate)}</>}
+                    </div>
+                    <div className="small muted" style={{ marginTop: 3, fontSize: 11 }}>โดย {l.user || "—"} · บันทึกเมื่อ {fmtTimestamp(cms, l.createdAt)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           {allFinesPaid && !closedCase && c.status === "04" && (
             <button className="btn btn-success btn-block" style={{ marginTop: 12 }} onClick={doCloseFine} disabled={locked || !canFine}>
               <Icon name="check-circle" size={16} /> ปิดเคส (ยุติคดี — ชำระค่าปรับครบ)
@@ -723,7 +760,7 @@ export default function CaseDetailPage() {
       {modal === "extend" && <ExtendSlaModal c={c} onClose={() => setModal(null)} onSave={doExtend} />}
       {modal === "invest" && <InvestigationModal c={c} onClose={() => setModal(null)} onAddEvent={addInvestEvent} onChoose={selectInvestPath} />}
       {modal === "board" && <BoardModal c={c} onClose={() => setModal(null)} onSaveMeeting={saveBoardMeeting} onApply={applyBoard} onChoose={selectInvestPath} />}
-      {modal === "fine" && <FineModal c={c} onClose={() => setModal(null)} onSave={savePayment} onCloseCase={doCloseFine} onChoose={selectInvestPath} />}
+      {modal === "fine" && <FineModal c={c} onClose={() => setModal(null)} onSave={savePayment} onAddLetter={addFineLetter} onCloseCase={doCloseFine} onChoose={selectInvestPath} />}
       {modal === "followup" && <FollowupModal c={c} onClose={() => setModal(null)} onAdd={addFollowupRecord} onCloseCase={doCloseFollowup} onChoose={selectInvestPath} />}
       {modal === "assignees" && (
         <Modal open onClose={() => setModal(null)} title="ผู้รับผิดชอบเคส" sub={`${c.etracking || "—"} · ${c.assignees.length} คน`}

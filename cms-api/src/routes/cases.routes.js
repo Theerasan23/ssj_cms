@@ -168,6 +168,14 @@ router.post("/:id/board/apply", requireRole("officer", ...SUPERVISOR_ROLES), req
   } catch (e) { next(e); }
 });
 
+// POST /api/cases/:id/fine-letter { round, letterNo, letterDate, dueDate, recipient }
+// บันทึกการส่งหนังสือแจ้งเปรียบเทียบปรับ — บันทึกซ้ำได้ สถานะเคสไม่เปลี่ยน
+router.post("/:id/fine-letter", requireRole("officer", "fine", ...SUPERVISOR_ROLES), requireCaseActor, async (req, res, next) => {
+  try {
+    res.json(await cases.addFineLetter(req.params.id, req.body || {}, req.user.name));
+  } catch (e) { next(e); }
+});
+
 // POST /api/cases/:id/payment { fineId, paidDate, amount } — amount may be partial
 // (role "fine" = เจ้าหน้าที่ค่าปรับ works this stage; requireCaseActor limits them to status 04)
 router.post("/:id/payment", requireRole("officer", "fine", ...SUPERVISOR_ROLES), requireCaseActor, async (req, res, next) => {

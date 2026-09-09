@@ -110,6 +110,7 @@ function buildShape(r, rel) {
     investigation: deriveInvestigation(rel.investigations),
     board,
     fines: rel.fines,
+    fineLetters: rel.fineLetters,
     createdBy: r.created_by,
     createdByUserId: r.created_by_user_id,
     createdByName: r.created_by_name || r.created_by,
@@ -139,6 +140,10 @@ async function attachRelations(rows) {
      FROM case_fines WHERE case_id IN (${ph}) ORDER BY seq`, ids);
   const [timeline] = await pool.query(
     `SELECT case_id, date, time, title, user_name AS user, kind, status FROM case_timeline WHERE case_id IN (${ph}) ORDER BY seq`, ids);
+  const [fineLetters] = await pool.query(
+    `SELECT case_id, id, round, letter_no AS letterNo, letter_date AS letterDate, due_date AS dueDate,
+            recipient, user_name AS user, created_at AS createdAt
+     FROM case_fine_letters WHERE case_id IN (${ph}) ORDER BY seq, id`, ids);
   const [investigations] = await pool.query(
     `SELECT case_id, id, kind, date, place, result FROM case_investigations WHERE case_id IN (${ph}) ORDER BY seq, id`, ids);
   const [followups] = await pool.query(
@@ -169,6 +174,7 @@ async function attachRelations(rows) {
   const gBoardCom = groupBy(boardCom, "case_id");
   const gBoardSec = groupBy(boardSec, "case_id");
   const gFines = groupBy(fines, "case_id");
+  const gFineLetters = groupBy(fineLetters, "case_id");
   const gTimeline = groupBy(timeline, "case_id");
   const gInv = groupBy(investigations, "case_id");
   const gFollowups = groupBy(followups, "case_id");
@@ -195,6 +201,10 @@ async function attachRelations(rows) {
       fines: (gFines.get(r.id) || []).map((x) => ({
         fineId: x.fineId, secId: x.secId, count: x.count, amount: x.amount,
         paid: !!x.paid, paidDate: x.paidDate, paidAmount: x.paidAmount,
+      })),
+      fineLetters: (gFineLetters.get(r.id) || []).map((x) => ({
+        id: x.id, round: x.round, letterNo: x.letterNo || "", letterDate: x.letterDate,
+        dueDate: x.dueDate, recipient: x.recipient || "", user: x.user || "", createdAt: x.createdAt,
       })),
       timeline: gTimeline.get(r.id) || [],
     })
@@ -790,6 +800,34 @@ async function applyBoardResolution(id, byName) {
 
 // Record a (possibly partial) fine payment. The case stays at 04 even when everything
 // is paid — closing is an explicit officer action (closeFineCase).
+// One "หนังสือแจ้งเปรียบเทียบปรับ" sent to the respondent. Repeatable — a case that
+// ignores the first letter gets a second/third round, each with its own เลขที่หนังสือ
+// and วันที่นัดชำระปรับ. Recording a letter does not change the case status.
+async function addFineLetter(id, payload, byName) {
+  await assertActionable(id, ["04"]);
+  const letterNo = (payload.letterNo || "").trim();
+  const recipient = (payload.recipient || "").trim();
+  if (!payload.letterDate) { const e = new Error("กรุณาระบุวันที่ลงหนังสือ"); e.status = 400; throw e; }
+  const round = Number(payload.round);
+  if (!Number.isInteger(round) || round < 1) { const e = new Error("หนังสือปรับครั้งที่ต้องเป็นจำนวนเต็มตั้งแต่ 1"); e.status = 400; throw e; }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [seqRow] = await conn.query("SELECT COALESCE(MAX(seq), -1) + 1 AS n FROM case_fine_letters WHERE case_id = ?", [id]);
+    await conn.query(
+      `INSERT INTO case_fine_letters (case_id, round, letter_no, letter_date, due_date, recipient, user_name, seq)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, round, letterNo || null, payload.letterDate, payload.dueDate || null, recipient || null, byName, seqRow[0].n]
+    );
+    await addTimeline(conn, id, {
+      title: `ส่งหนังสือแจ้งเปรียบเทียบปรับ ครั้งที่ ${round}${letterNo ? ` — เลขที่ ${letterNo}` : ""}`,
+      user: byName, kind: "fine", date: payload.letterDate,
+    });
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  return getCaseById(id);
+}
+
 async function savePayment(id, fineId, paidDate, amount, byName) {
   const c = await assertActionable(id, ["04"]);
   const conn = await pool.getConnection();
@@ -1210,7 +1248,7 @@ async function importCases(rows, user) {
 module.exports = {
   getCaseById, getAllCases, listCases, createCase, updateCase, setEtracking,
   assignCase, reassignCase, saveInvestigation, addInvestigationEvent, decision,
-  saveBoard, applyBoardResolution, savePayment, closeFineCase,
+  saveBoard, applyBoardResolution, addFineLetter, savePayment, closeFineCase,
   addFollowup, closeFollowupCase, sendFollowupToBoard,
   cancelCase, unlockCase, extendSla, returnCase, submitCase, importCases, checkEtrackings,
 };
