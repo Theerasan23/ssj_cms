@@ -362,14 +362,21 @@ export default function ReportsPage() {
   const heat = useMemo(() => {
     const grid = STAGES.map(() => Array(12).fill(0));
     const stageIdx = { "01": 0, "02": 1, "03": 2, "04": 3 };
+    // เคสที่เกินเวลาแต่สร้างไว้เกิน 12 เดือน ไม่มีช่องให้ลง — เดิมหายไปเงียบ ๆ ทำให้ผลรวม
+    // ในตารางน้อยกว่าจำนวนเคสเกินเวลาจริงโดยไม่มีอะไรบอก จึงนับแยกไว้บอกใต้ตาราง
+    let outside = 0;
     scoped.forEach((c) => {
       const si = stageIdx[c.status];
       if (si === undefined) return; // skip closed cases
       if (cms.caseSla(c).kind !== "overdue") return;
       const idx = monthlyData.findIndex((b) => c.createdAt && b.y === Number(c.createdAt.slice(0, 4)) && b.m === Number(c.createdAt.slice(5, 7)) - 1);
       if (idx >= 0) grid[si][idx]++;
+      else outside++;
     });
-    return grid;
+    // ความเข้มต้องเทียบกับช่องสูงสุดจริง ๆ สูตรเดิมคิดจากค่าดิบ (95 - v*6) พอมีเดือนที่ 17 เคส
+    // ค่าจะติดลบและ chroma หลุดขอบเขตสี ช่องเลยกลายเป็นสี่เหลี่ยมดำแทนที่จะเป็นเฉดแดง
+    const max = Math.max(1, ...grid.flat());
+    return { grid, max, outside, total: grid.flat().reduce((a, b) => a + b, 0) };
   }, [scoped, cms, monthlyData]);
 
   // ----- ความถี่การใช้งานระบบของเจ้าหน้าที่ (เจ้าหน้าที่ × เดือน) -----
@@ -860,12 +867,26 @@ export default function ReportsPage() {
             {STAGES.map((s, i) => (
               <Fragment key={i}>
                 <div className="h-label">{s}</div>
-                {heat[i].map((v, j) => (
-                  <div key={j} className="h-cell" style={{ background: v === 0 ? "var(--surface-2)" : `oklch(${95 - v * 6}% ${0.05 + v * 0.025} 30)`, color: v > 3 ? "#fff" : "var(--primary-900)" }} title={`${s} · ${monthlyData[j].label} ${String(monthlyData[j].y + 543).slice(-2)}: ${v} เคส`}>{v || ""}</div>
-                ))}
+                {heat.grid[i].map((v, j) => {
+                  const ratio = v / heat.max;
+                  return (
+                    <div key={j} className="h-cell"
+                      style={{
+                        background: v === 0 ? "var(--surface-2)" : `oklch(${94 - ratio * 44}% ${0.03 + ratio * 0.12} 30)`,
+                        color: ratio > 0.55 ? "#fff" : "var(--primary-900)",
+                      }}
+                      title={`${s} · เคสที่สร้างเดือน ${monthlyData[j].label} ${String(monthlyData[j].y + 543).slice(-2)} และตอนนี้เกินเวลา: ${v} เคส`}>
+                      {v || ""}
+                    </div>
+                  );
+                })}
               </Fragment>
             ))}
           </div>
+          </div>
+          <div className="small muted" style={{ marginTop: 10, fontSize: 11.5 }}>
+            ช่องหนึ่ง = เคสที่ <b>สร้าง</b> ในเดือนนั้นและ <b>ตอนนี้</b> เกินเวลาที่ขั้นนั้น (ไม่ใช่เดือนที่เกินเวลา) · รวม {heat.total} เคส
+            {heat.outside > 0 && <> · อีก {heat.outside} เคสสร้างไว้เกิน 12 เดือน จึงไม่มีช่องแสดง</>}
           </div>
         </div>
       </div>

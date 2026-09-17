@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { DateInput } from "@/components/DateInput";
 import { Modal, ChipPicker, FormField, FileUpload, SLABadge } from "@/components/ui";
@@ -557,8 +557,10 @@ export function BoardModal({ c, onClose, onSaveMeeting, onApply, onChoose }) {
 // ---------- Fine / Payment ----------
 // Supports partial payments: each save adds to paidAmount; remaining = amount - paidAmount.
 // The case is closed by an explicit officer action (onCloseCase) once everything is paid.
-export function FineModal({ c, onClose, onSave, onAddLetter, onCloseCase, onChoose }) {
-  const { cms } = useApp();
+export function FineModal({ c, onClose, onSave, onAddLetter, onAddFine, onRemoveFine, onCloseCase, onChoose }) {
+  const { cms, actions } = useApp();
+  // มาตราอาจถูกเพิ่มจากหน้าค่าปรับ/Admin ในแท็บอื่นหลังโหลดหน้านี้ — ดึง master ใหม่ทุกครั้งที่เปิดฟอร์ม
+  useEffect(() => { actions.reloadMaster?.(); /* eslint-disable-next-line */ }, []);
   const [fineId, setFineId] = useState(null);
   const [paidDate, setPaidDate] = useState(cms.TODAY);
   const [amount, setAmount] = useState("");
@@ -585,6 +587,40 @@ export function FineModal({ c, onClose, onSave, onAddLetter, onCloseCase, onChoo
   const selRemaining = selected ? remainingOf(selected) : 0;
   const amt = Number(amount);
   const amountOk = selected && Number.isFinite(amt) && amt > 0 && amt <= selRemaining;
+
+  // เพิ่มรายการค่าปรับ: มาตราของ พรบ. ในเคสนี้ขึ้นก่อน ที่เหลือตามมา (เลือกได้ทุกมาตรา)
+  const allSections = cms.MASTER.sections || [];
+  const caseLaws = c.laws || [];
+  const caseSections = allSections.filter((sx) => caseLaws.includes(sx.law));
+  const otherSections = allSections.filter((sx) => !caseLaws.includes(sx.law));
+  const [newFine, setNewFine] = useState({ secId: "", count: 1, amount: "" });
+  const [addingFine, setAddingFine] = useState(false);
+  const rateOf = (secId, count) => cms.sectionById(secId)?.fines[Math.min(Math.max(count, 1) - 1, 2)] || "";
+  const setFineField = (k, v) => setNewFine((prev) => {
+    const next = { ...prev, [k]: v };
+    // เปลี่ยนมาตรา/ครั้งที่ → เติมอัตราค่าปรับให้ใหม่ (แก้จำนวนเงินเองได้)
+    if (k === "secId" || k === "count") next.amount = rateOf(next.secId, next.count);
+    return next;
+  });
+  const newFineOk = !!newFine.secId && Number.isInteger(+newFine.count) && +newFine.count >= 1
+    && Number.isInteger(+newFine.amount) && +newFine.amount > 0;
+
+  async function addFine() {
+    if (!newFineOk || addingFine) return;
+    setAddingFine(true);
+    try {
+      const ok = await onAddFine({ secId: newFine.secId, count: +newFine.count, amount: +newFine.amount });
+      if (ok !== false) setNewFine({ secId: "", count: 1, amount: "" });
+    } finally {
+      setAddingFine(false);
+    }
+  }
+
+  async function removeFine(f) {
+    if (!window.confirm(`ลบรายการค่าปรับ "${cms.sectionById(f.secId)?.text || f.secId}" ครั้งที่ ${f.count} ?`)) return;
+    const ok = await onRemoveFine(f.fineId);
+    if (ok !== false && fineId === f.fineId) { setFineId(null); setAmount(""); }
+  }
 
   async function addLetter() {
     if (!letterOk || addingLetter) return;
@@ -709,6 +745,11 @@ export function FineModal({ c, onClose, onSave, onAddLetter, onCloseCase, onChoo
         ) : (
           <FormField label="เลือกรายการชำระ" req>
             <div className="stack-sm">
+              {c.fines.length === 0 && (
+                <div className="small muted" style={{ padding: 12, border: "1px dashed var(--border)", borderRadius: 8 }}>
+                  ยังไม่มีรายการค่าปรับ{onAddFine ? " — เพิ่มมาตรา/ค่าปรับด้านล่างก่อน" : ""}
+                </div>
+              )}
               {c.fines.map((f) => {
                 const sec = cms.sectionById(f.secId);
                 const rem = remainingOf(f);
@@ -728,6 +769,13 @@ export function FineModal({ c, onClose, onSave, onAddLetter, onCloseCase, onChoo
                       : (f.paidAmount || 0) > 0
                         ? <span className="status-badge s03">ชำระบางส่วน</span>
                         : <span className="status-badge s04">ค้างชำระ</span>}
+                    {/* ลบได้เฉพาะรายการที่ยังไม่มีการชำระ · preventDefault กันคลิกทะลุไปเลือก radio ของ label */}
+                    {onRemoveFine && !(f.paidAmount > 0) && (
+                      <button className="icon-btn" title="ลบรายการนี้" style={{ flexShrink: 0 }}
+                        onClick={(e) => { e.preventDefault(); removeFine(f); }}>
+                        <Icon name="trash" size={14} />
+                      </button>
+                    )}
                   </label>
                 );
               })}
@@ -762,6 +810,40 @@ export function FineModal({ c, onClose, onSave, onAddLetter, onCloseCase, onChoo
               <FileUpload files={files} onChange={setFiles} />
             </FormField>
           </>
+        )}
+
+        {onAddFine && (
+          <div className="form-section">
+            <div className="section-head"><div className="section-num">+</div><div className="section-title">เพิ่มรายการค่าปรับ (มาตรา)</div></div>
+            <div className="section-body stack">
+              <div className="muted small">ระบบเติมอัตราค่าปรับตามมาตรา/ครั้งที่ให้อัตโนมัติ — แก้ไขจำนวนเงินได้</div>
+              <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                <select className="select" style={{ flex: 1, minWidth: 120 }} value={newFine.secId} onChange={(e) => setFineField("secId", e.target.value)} aria-label="มาตรา">
+                  <option value="">— เลือกมาตรา —</option>
+                  {caseSections.length > 0 && (
+                    <optgroup label="มาตราตาม พรบ. ของเคสนี้">
+                      {caseSections.map((sx) => <option key={sx.id} value={sx.id}>[{cms.lawLabel(sx.law)}] {sx.text}</option>)}
+                    </optgroup>
+                  )}
+                  {otherSections.length > 0 && (
+                    <optgroup label={caseSections.length > 0 ? "มาตราอื่น" : "มาตราทั้งหมด"}>
+                      {otherSections.map((sx) => <option key={sx.id} value={sx.id}>[{cms.lawLabel(sx.law)}] {sx.text}</option>)}
+                    </optgroup>
+                  )}
+                </select>
+                <input type="number" min="1" max="3" className="input" style={{ width: 70, flexShrink: 0 }} title="ครั้งที่" aria-label="ครั้งที่"
+                  value={newFine.count} onChange={(e) => setFineField("count", e.target.value === "" ? "" : +e.target.value)} />
+                <input type="number" min="0" step="500" className="input mono" style={{ width: 130, flexShrink: 0, textAlign: "right" }} aria-label="ค่าปรับ (บาท)"
+                  value={newFine.amount} onChange={(e) => setFineField("amount", e.target.value === "" ? "" : +e.target.value)} />
+                <span className="small muted" style={{ whiteSpace: "nowrap" }}>บาท</span>
+              </div>
+              <div className="row end">
+                <button className="btn btn-primary" disabled={!newFineOk || addingFine} onClick={addFine}>
+                  <Icon name="plus" size={14} /> เพิ่มรายการค่าปรับ
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {!allPaid && onChoose && (

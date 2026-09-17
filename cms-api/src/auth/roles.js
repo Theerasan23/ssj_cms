@@ -13,6 +13,9 @@ const ASSIGNABLE_ROLES = ["officer", ...HEAD_ROLES];
 
 const isSupervisor = (roleId) => SUPERVISOR_ROLES.includes(roleId);
 
+// บทบาทที่เข้าหน้าค่าปรับได้ — กด "เพิ่มมาตรา" จากหน้านั้นได้ด้วย (เพิ่มอย่างเดียว · แก้ไข/ลบยังเป็นของ admin)
+const FINE_PAGE_ROLES = ["officer", "fine", ...SUPERVISOR_ROLES];
+
 // ทุกบทบาท "เปิดดู" เคสได้ทั้งหมด — สิทธิ์ที่คุมคือการ "แก้ไข/ดำเนินการ" เท่านั้น
 // เขียนได้: ผู้ที่ได้รับมอบหมาย + หัวหน้า/รองหัวหน้า/แอดมิน
 // ข้อยกเว้นที่คงไว้ตาม flow เดิม:
@@ -31,4 +34,4 @@ function canWriteCase(c, user) {
 
 const WRITE_DENIED_MSG = "แก้ไขได้เฉพาะเจ้าหน้าที่ที่ได้รับมอบหมาย หัวหน้า/รองหัวหน้ากลุ่มงาน หรือแอดมิน (ผู้สร้างเคสแก้ได้ก่อนถูกมอบหมาย · เจ้าหน้าที่ค่าปรับแก้ได้เฉพาะขั้นชำระค่าปรับ)";
 
-module.exports = { HEAD_ROLES, SUPERVISOR_ROLES, ASSIGNABLE_ROLES, isSupervisor, canWriteCase, WRITE_DENIED_MSG };
+module.exports = { HEAD_ROLES, SUPERVISOR_ROLES, ASSIGNABLE_ROLES, FINE_PAGE_ROLES, isSupervisor, canWriteCase, WRITE_DENIED_MSG };

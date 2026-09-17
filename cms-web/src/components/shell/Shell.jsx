@@ -7,7 +7,7 @@ import { Logo, useClickOutside } from "@/components/ui";
 import { useApp } from "@/context/AppContext";
 import { api } from "@/lib/api";
 import { fmtSince } from "@/lib/format";
-import { SUPERVISOR_ROLES } from "@/lib/roles";
+import { SUPERVISOR_ROLES, FINE_PAGE_ROLES } from "@/lib/roles";
 
 // roles: supply(ธุรการ) สร้างเคส · head/deputy อนุมัติ+มอบหมาย · officer ดำเนินการ · fine เฉพาะขั้นค่าปรับ
 const NAV_ITEMS = [
@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   { key: "documents", label: "เอกสารทั้งหมด", icon: "stack", href: "/documents", match: "/documents", roles: ["supply"] },
   { key: "drafts", label: "เอกสารฉบับร่าง", icon: "file", href: "/drafts", match: "/drafts", roles: ["supply"] },
   { key: "committee", label: "คณะกรรมการ", icon: "users", href: "/committee", match: "/committee", roles: ["officer", ...SUPERVISOR_ROLES] },
-  { key: "fines", label: "ค่าปรับ", icon: "coin", href: "/fines", match: "/fines", roles: ["officer", "fine", ...SUPERVISOR_ROLES] },
+  { key: "fines", label: "ค่าปรับ", icon: "coin", href: "/fines", match: "/fines", roles: FINE_PAGE_ROLES },
   // การ์ด KPI ทั้งหมดย้ายจากหน้าหลักมาอยู่ที่นี่ (หน้าหลักเหลือแค่ "เคสล่าสุด") เมนูนี้จึงต้องเปิดให้
   // ทุกบทบาทที่เคยเห็นตัวเลขบนหน้าหลัก ไม่งั้นเจ้าหน้าที่จะไม่เหลือที่ดูงานค้าง/ผลงานของตัวเองเลย
   { key: "reports", label: "รายงาน · KPI", icon: "chart", href: "/reports", match: "/reports", roles: ["supply", "officer", "fine", ...SUPERVISOR_ROLES, "exec"] },

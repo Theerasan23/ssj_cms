@@ -4,23 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { Avatar, Modal, FormField } from "@/components/ui";
+import { ENTITY_META, EntityForm, blankEntityForm } from "@/components/EntityForm";
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
 import { fmtThaiDate } from "@/lib/format";
-
-// Field metadata for each editable lookup entity (matches the API).
-// (พนักงานเจ้าหน้าที่ถูกย้ายไปอยู่ใน "ผู้ใช้และสิทธิ์" — มอบหมายงานให้บัญชีผู้ใช้โดยตรง)
-const ENTITY_META = {
-  channels:    { label: "ช่องทางการร้องเรียน", icon: "phone",   fields: [{ key: "name", label: "ชื่อ" }] },
-  laws:        { label: "พรบ.",                icon: "shield",  fields: [{ key: "id", label: "รหัส (id)", pk: true }, { key: "label", label: "ชื่อ พรบ." }] },
-  sources:     { label: "ที่มาของผู้ร้อง",      icon: "tag",     fields: [{ key: "name", label: "ชื่อ" }] },
-  problems:    { label: "ประเภทปัญหา",         icon: "alert",   fields: [{ key: "name", label: "ชื่อ" }] },
-  // เพิ่มมาตรา: เลือกพรบ. ก่อน แล้วจึงกรอกมาตรา · id เว้นว่างได้ (ระบบสร้างให้)
-  sections:    { label: "มาตรา + ค่าปรับ",     icon: "gavel",   fields: [{ key: "law_id", label: "พรบ.", lawSelect: true }, { key: "text", label: "ข้อความมาตรา" }, { key: "fine1", label: "ค่าปรับครั้งที่ 1", num: true }, { key: "fine2", label: "ครั้งที่ 2", num: true }, { key: "fine3", label: "ครั้งที่ 3", num: true }, { key: "id", label: "รหัส (id)", pk: true, optional: true }] },
-  committees:  { label: "คณะกรรมการ",          icon: "users",   fields: [{ key: "name", label: "ชื่อ" }] },
-  resolutions: { label: "มติคณะกรรมการ",        icon: "gavel",   fields: [{ key: "name", label: "ชื่อ" }] },
-  districts:   { label: "อำเภอ",               icon: "map-pin", fields: [{ key: "name", label: "ชื่อ" }] },
-};
 
 const NAV = [
   ...Object.keys(ENTITY_META).map((k) => ({ key: k, label: ENTITY_META[k].label, icon: ENTITY_META[k].icon })),
@@ -112,17 +99,11 @@ function EntityManager({ entity, meta }) {
     }
   }
 
-  function blankForm() {
-    const f = {};
-    for (const fl of meta.fields) f[fl.key] = "";
-    return f;
-  }
-
   return (
     <div className="card">
       <div className="card-header">
         <h3>{meta.label}</h3>
-        <button className="btn btn-primary btn-sm" onClick={() => setEditing({ row: blankForm(), isNew: true })}>
+        <button className="btn btn-primary btn-sm" onClick={() => setEditing({ row: blankEntityForm(meta), isNew: true })}>
           <Icon name="plus" size={14} /> เพิ่มใหม่
         </button>
       </div>
@@ -149,39 +130,6 @@ function EntityManager({ entity, meta }) {
         <EntityForm meta={meta} editing={editing} onClose={() => setEditing(null)} onSave={save} />
       )}
     </div>
-  );
-}
-
-function EntityForm({ meta, editing, onClose, onSave }) {
-  const { cms } = useApp();
-  const [form, setForm] = useState(editing.row);
-  return (
-    <Modal open onClose={onClose} title={editing.isNew ? `เพิ่ม ${meta.label}` : `แก้ไข ${meta.label}`}
-      footer={<>
-        <button className="btn btn-outline" onClick={onClose}>ยกเลิก</button>
-        <button className="btn btn-primary" onClick={() => onSave(form, editing.isNew)}><Icon name="check" size={14} /> บันทึก</button>
-      </>}>
-      <div className="stack">
-        {meta.fields.map((f) => (
-          <FormField key={f.key} label={f.label} req={f.lawSelect}>
-            {f.lawSelect ? (
-              // เลือกพรบ. ก่อน แล้วจึงกรอกมาตรา/ค่าปรับด้านล่าง
-              <select className="select" value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}>
-                <option value="">— เลือกพรบ. —</option>
-                {cms.MASTER.laws.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-              </select>
-            ) : (
-              <input className={`input ${f.num ? "mono" : ""}`} type={f.num ? "number" : "text"}
-                disabled={f.pk && !editing.isNew}
-                placeholder={f.pk && f.optional && editing.isNew ? "เว้นว่าง = สร้างอัตโนมัติ" : undefined}
-                value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
-            )}
-            {f.pk && !editing.isNew && <span className="hint">รหัสหลักแก้ไขไม่ได้</span>}
-            {f.pk && f.optional && editing.isNew && <span className="hint">รหัสอ้างอิงทางเทคนิค — เว้นว่างให้ระบบสร้างอัตโนมัติได้</span>}
-          </FormField>
-        ))}
-      </div>
-    </Modal>
   );
 }
 

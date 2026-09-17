@@ -5,18 +5,36 @@ import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { Tabs } from "@/components/ui";
 import { ExportButtons } from "@/components/ExportButtons";
-import { useApp } from "@/context/AppContext";
+import { ENTITY_META, EntityForm, blankEntityForm } from "@/components/EntityForm";
+import { useApp, useToasts } from "@/context/AppContext";
+import { api } from "@/lib/api";
 import { useAllCases } from "@/lib/useCases";
 import { caseSectionIds, sectionShortLabel } from "@/lib/caseStats";
+import { FINE_PAGE_ROLES } from "@/lib/roles";
 
 export default function FinesPage() {
-  const { cms } = useApp();
+  const { cms, role, actions } = useApp();
+  const toast = useToasts();
   const router = useRouter();
   const { cases, loading } = useAllCases();
   const [tab, setTab] = useState("unpaid");
   // มุมมองของทั้งหน้า: ดูรวม หรือเจาะดูทีละ พรบ./มาตรา — เลือกได้ทีละอย่าง
   const [mode, setMode] = useState("all");
   const [pick, setPick] = useState("");
+  // ฟอร์ม "เพิ่มมาตรา" ตัวเดียวกับหน้า Admin (มาตรา + ค่าปรับ)
+  const [addingSection, setAddingSection] = useState(null);
+  const canAddSection = FINE_PAGE_ROLES.includes(role?.id);
+
+  async function saveSection(form) {
+    try {
+      await api.post("/master/sections", form);
+      setAddingSection(null);
+      toast.push({ kind: "success", title: "เพิ่มมาตราสำเร็จ" });
+      actions.reloadMaster?.();
+    } catch (e) {
+      toast.push({ kind: "danger", title: "บันทึกไม่สำเร็จ", msg: e.message });
+    }
+  }
 
   if (loading) return <main className="page"><div className="muted">กำลังโหลด…</div></main>;
 
@@ -89,6 +107,11 @@ export default function FinesPage() {
         </div>
         <div className="page-actions">
           <div className="row" style={{ gap: 8 }}>
+            {canAddSection && (
+              <button className="btn btn-primary" onClick={() => setAddingSection({ row: blankEntityForm(ENTITY_META.sections), isNew: true })}>
+                <Icon name="plus" size={14} /> เพิ่มมาตรา
+              </button>
+            )}
             <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 8, padding: 2, background: "var(--surface)" }}>
               <button className={`btn btn-sm ${mode === "all" ? "btn-primary" : "btn-ghost"}`} onClick={() => switchMode("all")}>ทั้งหมด</button>
               <button className={`btn btn-sm ${mode === "law" ? "btn-primary" : "btn-ghost"}`} onClick={() => switchMode("law")} disabled={lawOptions.length === 0}>ตาม พรบ.</button>
@@ -175,6 +198,10 @@ export default function FinesPage() {
           </table>
         </div>
       </div>
+
+      {addingSection && (
+        <EntityForm meta={ENTITY_META.sections} editing={addingSection} onClose={() => setAddingSection(null)} onSave={saveSection} />
+      )}
     </main>
   );
 }

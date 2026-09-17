@@ -176,6 +176,20 @@ router.post("/:id/fine-letter", requireRole("officer", "fine", ...SUPERVISOR_ROL
   } catch (e) { next(e); }
 });
 
+// POST /api/cases/:id/fines { secId, count, amount } — เพิ่มรายการค่าปรับในขั้นชำระ (สถานะ 04)
+router.post("/:id/fines", requireRole("officer", "fine", ...SUPERVISOR_ROLES), requireCaseActor, async (req, res, next) => {
+  try {
+    res.json(await cases.addFineItem(req.params.id, req.body || {}, req.user.name));
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/cases/:id/fines/:fineId — ลบรายการค่าปรับที่ยังไม่มีการชำระ
+router.delete("/:id/fines/:fineId", requireRole("officer", "fine", ...SUPERVISOR_ROLES), requireCaseActor, async (req, res, next) => {
+  try {
+    res.json(await cases.removeFineItem(req.params.id, req.params.fineId, req.user.name));
+  } catch (e) { next(e); }
+});
+
 // POST /api/cases/:id/payment { fineId, paidDate, amount } — amount may be partial
 // (role "fine" = เจ้าหน้าที่ค่าปรับ works this stage; requireCaseActor limits them to status 04)
 router.post("/:id/payment", requireRole("officer", "fine", ...SUPERVISOR_ROLES), requireCaseActor, async (req, res, next) => {

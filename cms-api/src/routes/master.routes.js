@@ -2,6 +2,7 @@ const express = require("express");
 const { requireAuth, requireRole } = require("../middleware/auth");
 const master = require("../services/master.service");
 const settings = require("../services/settings.service");
+const { FINE_PAGE_ROLES } = require("../auth/roles");
 
 const router = express.Router();
 const adminOnly = [requireAuth, requireRole("admin")];
@@ -24,6 +25,14 @@ router.put("/sla", adminOnly, async (req, res, next) => {
 router.get("/:entity", adminOnly, async (req, res, next) => {
   try {
     res.json(await master.listEntity(req.params.entity));
+  } catch (e) { next(e); }
+});
+
+// POST /api/master/sections  (admin + ทุกบทบาทที่เข้าหน้าค่าปรับได้) — ปุ่ม "เพิ่มมาตรา" ในหน้าค่าปรับ
+// ต้องอยู่ก่อน /:entity ไม่งั้นจะโดน adminOnly ตัดก่อน
+router.post("/sections", requireAuth, requireRole(...FINE_PAGE_ROLES), async (req, res, next) => {
+  try {
+    res.status(201).json(await master.createItem("sections", req.body || {}));
   } catch (e) { next(e); }
 });
 

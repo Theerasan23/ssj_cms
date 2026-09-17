@@ -828,6 +828,57 @@ async function addFineLetter(id, payload, byName) {
   return getCaseById(id);
 }
 
+// เพิ่มรายการค่าปรับ (มาตรา + ครั้งที่ + จำนวนเงิน) ให้เคสที่อยู่ขั้นชำระค่าปรับ
+// ปกติรายการมาจากมติคณะกรรมการตอนกด "ดำเนินการตามมติ" แต่เคสที่นำเข้าจาก Excel มาที่สถานะ 04
+// ไม่มีรายการเลย และมาตราที่เพิ่มทีหลังก็ต้องเลือกใส่เคสเดิมได้
+async function addFineItem(id, payload, byName) {
+  await assertActionable(id, ["04"]);
+  const secId = String(payload.secId || "").trim();
+  const count = Number(payload.count);
+  const amount = Number(payload.amount);
+  if (!secId) { const e = new Error("กรุณาเลือกมาตรา"); e.status = 400; throw e; }
+  if (!Number.isInteger(count) || count < 1) { const e = new Error("ครั้งที่ต้องเป็นจำนวนเต็มตั้งแต่ 1"); e.status = 400; throw e; }
+  if (!Number.isInteger(amount) || amount <= 0) { const e = new Error("ค่าปรับต้องเป็นจำนวนเต็มมากกว่า 0"); e.status = 400; throw e; }
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [sec] = await conn.query("SELECT text FROM law_sections WHERE id = ?", [secId]);
+    if (!sec.length) { const e = new Error("ไม่พบมาตราที่เลือก"); e.status = 400; throw e; }
+    const [seqRow] = await conn.query("SELECT COALESCE(MAX(seq), -1) + 1 AS n FROM case_fines WHERE case_id = ?", [id]);
+    await conn.query(
+      "INSERT INTO case_fines (case_id, section_id, count, amount, paid, paid_amount, seq) VALUES (?, ?, ?, ?, 0, 0, ?)",
+      [id, secId, count, amount, seqRow[0].n]
+    );
+    await addTimeline(conn, id, {
+      title: `เพิ่มรายการค่าปรับ: ${sec[0].text} ครั้งที่ ${count} — ${amount.toLocaleString("th-TH")} บาท`,
+      user: byName, kind: "fine",
+    });
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  return getCaseById(id);
+}
+
+// ลบรายการค่าปรับที่ยังไม่มีการชำระเลย (แก้กรณีเลือกมาตรา/ยอดผิด) — มียอดชำระแล้วลบไม่ได้
+async function removeFineItem(id, fineId, byName) {
+  await assertActionable(id, ["04"]);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [own] = await conn.query(
+      `SELECT f.id, f.count, f.amount, f.paid_amount, s.text FROM case_fines f
+       LEFT JOIN law_sections s ON s.id = f.section_id WHERE f.id = ? AND f.case_id = ?`, [fineId, id]);
+    if (!own.length) { const e = new Error("ไม่พบรายการค่าปรับ"); e.status = 404; throw e; }
+    if (Number(own[0].paid_amount) > 0) { const e = new Error("รายการนี้มีการชำระแล้ว — ลบไม่ได้"); e.status = 409; throw e; }
+    await conn.query("DELETE FROM case_fines WHERE id = ?", [fineId]);
+    await addTimeline(conn, id, {
+      title: `ลบรายการค่าปรับ: ${own[0].text || "—"} ครั้งที่ ${own[0].count} — ${Number(own[0].amount).toLocaleString("th-TH")} บาท`,
+      user: byName, kind: "fine",
+    });
+    await conn.commit();
+  } catch (e) { await conn.rollback(); throw e; } finally { conn.release(); }
+  return getCaseById(id);
+}
+
 async function savePayment(id, fineId, paidDate, amount, byName) {
   const c = await assertActionable(id, ["04"]);
   const conn = await pool.getConnection();
@@ -1248,7 +1299,7 @@ async function importCases(rows, user) {
 module.exports = {
   getCaseById, getAllCases, listCases, createCase, updateCase, setEtracking,
   assignCase, reassignCase, saveInvestigation, addInvestigationEvent, decision,
-  saveBoard, applyBoardResolution, addFineLetter, savePayment, closeFineCase,
+  saveBoard, applyBoardResolution, addFineLetter, addFineItem, removeFineItem, savePayment, closeFineCase,
   addFollowup, closeFollowupCase, sendFollowupToBoard,
   cancelCase, unlockCase, extendSla, returnCase, submitCase, importCases, checkEtrackings,
 };

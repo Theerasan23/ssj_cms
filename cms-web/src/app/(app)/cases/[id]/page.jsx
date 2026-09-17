@@ -146,6 +146,30 @@ export default function CaseDetailPage() {
       return false;
     }
   }
+  async function addFineItem(payload) {
+    if (guardLocked()) return false;
+    try {
+      const updated = await api.post(`/cases/${c.id}/fines`, payload);
+      setC(updated);
+      toast.push({ kind: "success", title: "เพิ่มรายการค่าปรับแล้ว", msg: "เลือกรายการเพื่อบันทึกการชำระได้" });
+      return true;
+    } catch (e) {
+      toast.push({ kind: "danger", title: "เพิ่มรายการไม่สำเร็จ", msg: e.message });
+      return false;
+    }
+  }
+  async function removeFineItem(fineId) {
+    if (guardLocked()) return false;
+    try {
+      const updated = await api.del(`/cases/${c.id}/fines/${fineId}`);
+      setC(updated);
+      toast.push({ kind: "success", title: "ลบรายการค่าปรับแล้ว" });
+      return true;
+    } catch (e) {
+      toast.push({ kind: "danger", title: "ลบไม่สำเร็จ", msg: e.message });
+      return false;
+    }
+  }
   async function savePayment(payload) {
     if (guardLocked()) return false;
     try {
@@ -760,7 +784,7 @@ export default function CaseDetailPage() {
       {modal === "extend" && <ExtendSlaModal c={c} onClose={() => setModal(null)} onSave={doExtend} />}
       {modal === "invest" && <InvestigationModal c={c} onClose={() => setModal(null)} onAddEvent={addInvestEvent} onChoose={selectInvestPath} />}
       {modal === "board" && <BoardModal c={c} onClose={() => setModal(null)} onSaveMeeting={saveBoardMeeting} onApply={applyBoard} onChoose={selectInvestPath} />}
-      {modal === "fine" && <FineModal c={c} onClose={() => setModal(null)} onSave={savePayment} onAddLetter={addFineLetter} onCloseCase={doCloseFine} onChoose={selectInvestPath} />}
+      {modal === "fine" && <FineModal c={c} onClose={() => setModal(null)} onSave={savePayment} onAddLetter={addFineLetter} onAddFine={addFineItem} onRemoveFine={removeFineItem} onCloseCase={doCloseFine} onChoose={selectInvestPath} />}
       {modal === "followup" && <FollowupModal c={c} onClose={() => setModal(null)} onAdd={addFollowupRecord} onCloseCase={doCloseFollowup} onChoose={selectInvestPath} />}
       {modal === "assignees" && (
         <Modal open onClose={() => setModal(null)} title="ผู้รับผิดชอบเคส" sub={`${c.etracking || "—"} · ${c.assignees.length} คน`}
