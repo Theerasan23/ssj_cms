@@ -9,6 +9,7 @@ const notificationRoutes = require("./routes/notifications.routes");
 const publicRoutes = require("./routes/public.routes");
 const auditRoutes = require("./routes/audit.routes");
 const usersRoutes = require("./routes/users.routes");
+const adminCasesRoutes = require("./routes/admin-cases.routes");
 
 const app = express();
 
@@ -48,6 +49,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/public", publicRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/users", usersRoutes);
+app.use("/api/admin/cases", adminCasesRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ error: "ไม่พบ endpoint นี้" }));

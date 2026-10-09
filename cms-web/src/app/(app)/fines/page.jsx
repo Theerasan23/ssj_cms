@@ -12,6 +12,9 @@ import { useAllCases } from "@/lib/useCases";
 import { caseSectionIds, sectionShortLabel } from "@/lib/caseStats";
 import { FINE_PAGE_ROLES } from "@/lib/roles";
 
+const ELLIPSIS = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const businessOf = (c) => c.respondent?.business || c.respondent?.licensee || "";
+
 export default function FinesPage() {
   const { cms, role, actions } = useApp();
   const toast = useToasts();
@@ -126,7 +129,8 @@ export default function FinesPage() {
             )}
             <ExportButtons rows={() => rows} filename={`fines-${tab}`} size="md" columns={[
               { header: "E-tracking", value: (f) => f.c.etracking || "" },
-              { header: "เคส", value: (f) => f.c.title },
+              { header: "เลขรับ สสจ.", value: (f) => f.c.letterNo || "" },
+              { header: "สถานประกอบการ", value: (f) => businessOf(f.c) },
               { header: "มาตรา", value: (f) => cms.sectionById(f.secId)?.text || f.secId },
               { header: "ครั้งที่", value: (f) => f.count },
               { header: "จำนวนเงิน", value: (f) => f.amount },
@@ -175,14 +179,18 @@ export default function FinesPage() {
         </div>
         <div className="table-wrap">
           <table className="data">
-            <thead><tr><th>E-tracking</th><th>เคส</th><th>มาตรา</th><th>ครั้งที่</th><th>ค่าปรับ</th><th>ชำระแล้ว</th><th>คงเหลือ</th><th>วันชำระล่าสุด</th><th></th></tr></thead>
+            <thead><tr><th>E-tracking</th><th>เลขรับ สสจ.</th><th>สถานประกอบการ</th><th>มาตรา</th><th>ครั้งที่</th><th>ค่าปรับ</th><th>ชำระแล้ว</th><th>คงเหลือ</th><th>วันชำระล่าสุด</th><th></th></tr></thead>
             <tbody>
               {rows.map((f, i) => {
                 const sec = cms.sectionById(f.secId);
                 return (
                   <tr key={i} onClick={() => router.push(`/cases/${f.c.id}`)}>
                     <td className="num">{f.c.etracking || "—"}</td>
-                    <td style={{ fontWeight: 500 }}>{f.c.title}</td>
+                    <td className="num">{f.c.letterNo || <span className="muted">—</span>}</td>
+                    {/* ชื่อสถานประกอบการบางรายยาวมาก ตัดด้วย ellipsis แล้วกางเต็มใน title เมื่อชี้เมาส์ */}
+                    <td style={{ maxWidth: 240 }}>
+                      <div style={{ fontWeight: 500, ...ELLIPSIS }} title={businessOf(f.c)}>{businessOf(f.c) || "—"}</div>
+                    </td>
                     <td>{sec?.text}</td>
                     <td className="num">{f.count}</td>
                     <td className="num"><strong>{cms.fmtMoney(f.amount)}</strong></td>
@@ -193,7 +201,7 @@ export default function FinesPage() {
                   </tr>
                 );
               })}
-              {rows.length === 0 && <tr><td colSpan="9"><div className="table-empty"><div className="empty-icon"><Icon name="coin" size={24} /></div>ไม่มีรายการ</div></td></tr>}
+              {rows.length === 0 && <tr><td colSpan="10"><div className="table-empty"><div className="empty-icon"><Icon name="coin" size={24} /></div>ไม่มีรายการ</div></td></tr>}
             </tbody>
           </table>
         </div>

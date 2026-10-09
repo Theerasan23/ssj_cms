@@ -12,8 +12,16 @@ const ENTITIES = {
   resolutions: { table: "resolutions",  idCol: "id", idAuto: true,  fields: ["name"],                                            required: ["name"] },
   districts:   { table: "districts",    idCol: "id", idAuto: true,  fields: ["name"],                                            required: ["name"] },
   laws:        { table: "laws",         idCol: "id", idAuto: false, fields: ["id", "label"],                                     required: ["id", "label"] },
-  sections:    { table: "law_sections", idCol: "id", idAuto: false, fields: ["id", "law_id", "text", "fine1", "fine2", "fine3"], required: ["id", "law_id", "text"] },
+  sections:    { table: "law_sections", idCol: "id", idAuto: false, fields: ["id", "law_id", "text", "fine1", "fine2", "fine3"], required: ["id", "law_id", "text"], nums: ["fine1", "fine2", "fine3"] },
 };
+
+// ค่าปรับครั้งที่ 1/2/3 ไม่บังคับกรอก — ฟอร์มส่งช่องว่างมาเป็น "" ซึ่ง MySQL strict mode ไม่ยอมใส่ลงคอลัมน์ INT
+// จึงแปลงช่องว่างเป็น 0 (ค่า default ของคอลัมน์) ก่อนบันทึก
+function normalizeNums(cfg, body) {
+  for (const f of cfg.nums || []) {
+    if (body[f] === "" || body[f] === null) body[f] = 0;
+  }
+}
 
 function entityOr400(name) {
   const c = ENTITIES[name];
@@ -40,6 +48,7 @@ async function createItem(entity, body) {
   const cfg = entityOr400(entity);
   // sections: id is technical — generate one when the admin leaves it blank (พรบ.-first form)
   if (entity === "sections" && !body.id) body.id = "sec-" + Date.now().toString(36);
+  normalizeNums(cfg, body);
   for (const r of cfg.required) {
     if (body[r] === undefined || body[r] === null || body[r] === "") { const e = new Error(`กรุณากรอกข้อมูลให้ครบ (${r})`); e.status = 400; throw e; }
   }
@@ -56,6 +65,7 @@ async function createItem(entity, body) {
 
 async function updateItem(entity, id, body) {
   const cfg = entityOr400(entity);
+  normalizeNums(cfg, body);
   const sets = [], vals = [];
   for (const f of cfg.fields) {
     if (f === cfg.idCol) continue; // never change the primary key

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { Avatar, Modal, FormField } from "@/components/ui";
+import { Avatar, Modal, FormField, Tabs, StatusBadge } from "@/components/ui";
 import { ENTITY_META, EntityForm, blankEntityForm } from "@/components/EntityForm";
 import { useApp, useToasts } from "@/context/AppContext";
 import { api } from "@/lib/api";
@@ -14,6 +14,7 @@ const NAV = [
   { key: "sla", label: "การกำหนด SLA", icon: "clock" },
   { key: "users", label: "ผู้ใช้และสิทธิ์", icon: "user" },
   { key: "audit", label: "Audit Log", icon: "history" },
+  { key: "delete-cases", label: "ลบเคส", icon: "trash" },
   { key: "import", label: "นำเข้า Excel", icon: "upload" },
 ];
 
@@ -35,10 +36,10 @@ export default function AdminPage() {
   return (
     <main className="page fade-in">
       <div className="page-header">
-        <div><h1>ตั้งค่าระบบ</h1><div className="page-meta">Master Data · SLA · ผู้ใช้และสิทธิ์ · Audit Log · นำเข้าข้อมูล</div></div>
+        <div><h1>ตั้งค่าระบบ</h1><div className="page-meta">Master Data · SLA · ผู้ใช้และสิทธิ์ · Audit Log · ลบเคส · นำเข้าข้อมูล</div></div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "240px minmax(0, 1fr)", gap: 20 }}>
         <div className="card" style={{ alignSelf: "start", position: "sticky", top: 84 }}>
           <div className="card-body" style={{ padding: 8 }}>
             {NAV.map((s) => (
@@ -57,6 +58,7 @@ export default function AdminPage() {
           {section === "sla" && <SlaConfig />}
           {section === "users" && <UserManager />}
           {section === "audit" && <AuditLog />}
+          {section === "delete-cases" && <CaseDeleter />}
         </div>
       </div>
     </main>
@@ -339,6 +341,153 @@ function AuditLog() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// แสดงทีละไม่เกินเท่านี้ — เคสสะสมหลักพันแถว ตารางยาวจนหาไม่เจอ ให้พิมพ์ค้นหาแทน
+const DELETE_LIST_LIMIT = 50;
+// ชื่อเคส/สถานประกอบการบางรายยาวมาก ตัดบรรทัดเดียวแล้วกางเต็มใน title เมื่อชี้เมาส์
+const ELLIPSIS = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+
+// ลบเคสออกจากระบบ — เคสถูกย้ายไปเก็บที่ตาราง temp_case พร้อมข้อมูลทุกตารางที่ผูกกับเคส
+function CaseDeleter() {
+  const router = useRouter();
+  const toast = useToasts();
+  const [tab, setTab] = useState("live");
+  const [live, setLive] = useState(null);
+  const [deleted, setDeleted] = useState(null);
+  const [query, setQuery] = useState("");
+  const [target, setTarget] = useState(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    try {
+      const [l, d] = await Promise.all([api.get("/admin/cases"), api.get("/admin/cases/deleted")]);
+      setLive(l);
+      setDeleted(d);
+    } catch (e) { toast.push({ kind: "danger", title: "โหลดข้อมูลไม่สำเร็จ", msg: e.message }); }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  function openConfirm(c) { setTarget(c); setReason(""); }
+
+  async function confirmDelete() {
+    setBusy(true);
+    try {
+      await api.del(`/admin/cases/${target.id}`, { reason });
+      toast.push({ kind: "success", title: "ลบเคสสำเร็จ", msg: "ย้ายข้อมูลไปเก็บที่ตาราง temp_case แล้ว" });
+      setTarget(null);
+      await load();
+    } catch (e) {
+      toast.push({ kind: "danger", title: "ลบไม่สำเร็จ", msg: e.message });
+    }
+    setBusy(false);
+  }
+
+  const needle = query.trim().toLowerCase();
+  const matches = (r) => !needle || [r.etracking, r.letterNo, r.title, r.business, r.licensee].join(" ").toLowerCase().includes(needle);
+  const rows = ((tab === "live" ? live : deleted) || []).filter(matches);
+  const shown = rows.slice(0, DELETE_LIST_LIMIT);
+  const loaded = tab === "live" ? live : deleted;
+  const cols = 6;
+
+  return (
+    <div className="card">
+      <div className="card-header">
+        <div><h3>ลบเคส</h3><div className="card-sub">เคสที่ลบจะหายจากทุกหน้าในระบบ และถูกย้ายไปเก็บที่ตาราง temp_case พร้อมข้อมูลทั้งหมดของเคส</div></div>
+      </div>
+      <div className="card-header" style={{ padding: 0, borderBottom: "1px solid var(--border)" }}>
+        <Tabs value={tab} onChange={setTab} tabs={[
+          { value: "live", label: "เคสในระบบ", icon: "inbox", count: live ? live.length : null },
+          { value: "deleted", label: "เคสที่ลบแล้ว", icon: "trash", count: deleted ? deleted.length : null },
+        ]} />
+      </div>
+      <div className="card-body" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div style={{ position: "relative" }}>
+          <Icon name="search" size={16} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--text-soft)" }} />
+          <input className="input" placeholder="ค้นหา E-tracking, เลขรับ สสจ., ชื่อเคส, สถานประกอบการ..." value={query}
+            onChange={(e) => setQuery(e.target.value)} style={{ paddingLeft: 36, width: "100%" }} />
+        </div>
+      </div>
+      <div className="table-wrap">
+        <table className="data">
+          {tab === "live" ? (
+            <thead><tr><th>E-tracking</th><th>เลขรับ สสจ.</th><th>ชื่อเคส · สถานประกอบการ</th><th>สถานะ</th><th>สร้างเมื่อ</th><th></th></tr></thead>
+          ) : (
+            <thead><tr><th>ลบเมื่อ · ลบโดย</th><th>E-tracking</th><th>เลขรับ สสจ.</th><th>ชื่อเคส · สถานประกอบการ</th><th>สถานะเดิม</th><th>เหตุผล</th></tr></thead>
+          )}
+          <tbody>
+            {tab === "live" && shown.map((c) => (
+              <tr key={c.id} style={{ cursor: "default" }}>
+                <td className="num">{c.etracking || <span className="muted">—</span>}</td>
+                <td className="num">{c.letterNo || <span className="muted">—</span>}</td>
+                <td style={{ maxWidth: 220 }}>
+                  <div style={{ fontWeight: 500, ...ELLIPSIS }} title={c.title || ""}>
+                    {c.isDraft && <span className="lock-pill" style={{ background: "var(--text-soft)", marginRight: 6 }}>ร่าง</span>}
+                    {c.title || <span className="muted">(ยังไม่ตั้งชื่อเรื่อง)</span>}
+                  </div>
+                  <div className="small muted" style={ELLIPSIS} title={c.business || c.licensee || ""}>{c.business || c.licensee || "—"}</div>
+                </td>
+                <td><StatusBadge code={c.status} /></td>
+                <td className="muted small" style={{ whiteSpace: "nowrap" }}>{fmtThaiDate(c.createdAt)}</td>
+                <td className="actions-cell">
+                  <div className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+                    <button className="icon-btn" style={{ width: 30, height: 30 }} title="เปิดดูเคสนี้" onClick={() => router.push(`/cases/${c.id}`)}><Icon name="external" size={14} /></button>
+                    <button className="icon-btn" style={{ width: 30, height: 30, color: "var(--error-700)" }} title="ลบเคสนี้" onClick={() => openConfirm(c)}><Icon name="trash" size={14} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {tab === "deleted" && shown.map((d) => (
+              <tr key={d.id} style={{ cursor: "default" }}>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  <div className="small">{fmtThaiDate(String(d.deletedAt).slice(0, 10))} {String(d.deletedAt).slice(11, 16)}</div>
+                  <div className="small muted">{d.deletedBy || "—"}</div>
+                </td>
+                <td className="num">{d.etracking || <span className="muted">—</span>}</td>
+                <td className="num">{d.letterNo || <span className="muted">—</span>}</td>
+                <td style={{ maxWidth: 260 }}>
+                  <div style={{ fontWeight: 500, ...ELLIPSIS }} title={d.title || ""}>{d.title || <span className="muted">—</span>}</div>
+                  <div className="small muted" style={ELLIPSIS} title={d.business || ""}>{d.business || "—"}</div>
+                </td>
+                <td>{d.status ? <StatusBadge code={d.status} /> : "—"}</td>
+                <td className="small" style={{ maxWidth: 200 }}>{d.reason || <span className="muted">—</span>}</td>
+              </tr>
+            ))}
+            {loaded && rows.length === 0 && <tr><td colSpan={cols}><div className="table-empty">{needle ? "ไม่พบเคสที่ค้นหา" : tab === "live" ? "ไม่มีเคสในระบบ" : "ยังไม่มีเคสที่ถูกลบ"}</div></td></tr>}
+            {!loaded && <tr><td colSpan={cols}><div className="muted" style={{ padding: 20 }}>กำลังโหลด…</div></td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {rows.length > DELETE_LIST_LIMIT && (
+        <div className="card-body small muted">แสดง {DELETE_LIST_LIMIT} จาก {rows.length} รายการ — พิมพ์ค้นหาเพื่อกรองให้แคบลง</div>
+      )}
+
+      {target && (
+        <Modal open onClose={() => !busy && setTarget(null)} title="ลบเคสออกจากระบบ" sub={[target.etracking, target.title].filter(Boolean).join(" · ")}
+          footer={<>
+            <button className="btn btn-outline" disabled={busy} onClick={() => setTarget(null)}>ยกเลิก</button>
+            <button className="btn btn-danger" disabled={busy} onClick={confirmDelete}><Icon name="trash" size={14} /> {busy ? "กำลังลบ…" : "ยืนยันลบเคส"}</button>
+          </>}>
+          <div className="stack">
+            <div style={{ padding: 12, background: "var(--error-100)", borderRadius: 8, color: "var(--error-700)", fontSize: 12.5 }}>
+              เคสนี้จะหายจากทุกหน้าในระบบ (รายการเคส ค่าปรับ รายงาน แจ้งเตือน) ข้อมูลทั้งหมดของเคสจะถูกย้ายไปเก็บที่ตาราง temp_case
+            </div>
+            <div className="kv">
+              <div className="k">เลขรับ สสจ.</div><div className="v mono">{target.letterNo || "—"}</div>
+              <div className="k">สถานประกอบการ</div><div className="v">{target.business || target.licensee || "—"}</div>
+              <div className="k">สถานะ</div><div className="v"><StatusBadge code={target.status} /></div>
+              <div className="k">ข้อมูลที่ย้ายไปด้วย</div>
+              <div className="v">ไทม์ไลน์ {target.timelineCount} รายการ · ค่าปรับ {target.fineCount} รายการ · เอกสารแนบ {target.attachmentCount} ไฟล์</div>
+            </div>
+            <FormField label="เหตุผลการลบ">
+              <textarea className="textarea" rows={3} maxLength={500} placeholder="ระบุเหตุผล (ถ้ามี) เช่น บันทึกซ้ำ / เคสทดสอบ" value={reason} onChange={(e) => setReason(e.target.value)} />
+            </FormField>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

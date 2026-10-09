@@ -4,6 +4,7 @@
 -- =========================================================
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS temp_case;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS case_followups;
 DROP TABLE IF EXISTS case_decisions;
@@ -426,4 +427,23 @@ CREATE TABLE notifications (
   INDEX idx_notif_recipient (recipient_user_id),
   CONSTRAINT fk_notif_case FOREIGN KEY (case_id) REFERENCES cases(id) ON DELETE SET NULL,
   CONSTRAINT fk_notif_user FOREIGN KEY (recipient_user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- เคสที่ Admin ลบออกจากระบบ (หน้า ตั้งค่า → ลบเคส) — snapshot เก็บแถวดิบจากทุกตารางที่ผูกกับเคส
+-- ไม่มี FK เพราะเคสต้นทางถูกลบไปแล้ว
+CREATE TABLE temp_case (
+  id                 INT AUTO_INCREMENT PRIMARY KEY,
+  case_id            VARCHAR(32) NOT NULL,
+  etracking          VARCHAR(64),
+  letter_no          VARCHAR(64),
+  title              VARCHAR(255),
+  business           VARCHAR(191),
+  status_code        VARCHAR(2),
+  reason             VARCHAR(500),
+  deleted_by_user_id INT,
+  deleted_by_name    VARCHAR(128),
+  deleted_at         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  snapshot           JSON NOT NULL,
+  INDEX idx_temp_case_case (case_id),
+  INDEX idx_temp_case_deleted (deleted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

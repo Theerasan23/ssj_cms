@@ -13,8 +13,8 @@ export const ENTITY_META = {
   sources:     { label: "ที่มาของผู้ร้อง",      icon: "tag",     fields: [{ key: "name", label: "ชื่อ" }] },
   problems:    { label: "ประเภทปัญหา",         icon: "alert",   fields: [{ key: "name", label: "ชื่อ" }] },
   // เพิ่มมาตรา: เลือกพรบ. ก่อน แล้วจึงกรอกมาตรา · id เว้นว่างได้ (ระบบสร้างให้)
-  // ใช้ทั้งในหน้า Admin และปุ่ม "เพิ่มมาตรา" ในหน้าค่าปรับ
-  sections:    { label: "มาตรา + ค่าปรับ",     icon: "gavel",   fields: [{ key: "law_id", label: "พรบ.", lawSelect: true }, { key: "text", label: "ข้อความมาตรา" }, { key: "fine1", label: "ค่าปรับครั้งที่ 1", num: true }, { key: "fine2", label: "ครั้งที่ 2", num: true }, { key: "fine3", label: "ครั้งที่ 3", num: true }, { key: "id", label: "รหัส (id)", pk: true, optional: true }] },
+  // ใช้ทั้งในหน้า Admin และปุ่ม "เพิ่มมาตรา" ในหน้าค่าปรับ · ค่าปรับครั้งที่ 1/2/3 ไม่บังคับ (เว้นว่าง = 0)
+  sections:    { label: "มาตรา + ค่าปรับ",     icon: "gavel",   fields: [{ key: "law_id", label: "พรบ.", lawSelect: true }, { key: "text", label: "ข้อความมาตรา" }, { key: "fine1", label: "ค่าปรับครั้งที่ 1", num: true, optional: true }, { key: "fine2", label: "ครั้งที่ 2", num: true, optional: true }, { key: "fine3", label: "ครั้งที่ 3", num: true, optional: true }, { key: "id", label: "รหัส (id)", pk: true, optional: true }] },
   committees:  { label: "คณะกรรมการ",          icon: "users",   fields: [{ key: "name", label: "ชื่อ" }] },
   resolutions: { label: "มติคณะกรรมการ",        icon: "gavel",   fields: [{ key: "name", label: "ชื่อ" }] },
   districts:   { label: "อำเภอ",               icon: "map-pin", fields: [{ key: "name", label: "ชื่อ" }] },
@@ -47,7 +47,7 @@ export function EntityForm({ meta, editing, onClose, onSave }) {
             ) : (
               <input className={`input ${f.num ? "mono" : ""}`} type={f.num ? "number" : "text"}
                 disabled={f.pk && !editing.isNew}
-                placeholder={f.pk && f.optional && editing.isNew ? "เว้นว่าง = สร้างอัตโนมัติ" : undefined}
+                placeholder={f.pk && f.optional && editing.isNew ? "เว้นว่าง = สร้างอัตโนมัติ" : f.num && f.optional ? "ไม่บังคับ" : undefined}
                 value={form[f.key] ?? ""} onChange={(e) => setForm({ ...form, [f.key]: e.target.value })} />
             )}
             {f.pk && !editing.isNew && <span className="hint">รหัสหลักแก้ไขไม่ได้</span>}
